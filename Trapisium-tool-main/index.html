@@ -70,14 +70,21 @@
 <script src="script.js"></script>
 
 <script>
-  /* Local UI Logic */
+  document.getElementById("Dlabel").style.display = "none";
+
   document.getElementById("type").addEventListener("change", function () {
-    document.getElementById("Dlabel").style.display = this.value === "irregular" ? "flex" : "none";
+    const type = this.value;
+    const Dlabel = document.getElementById("Dlabel");
+    Dlabel.style.display = (type === "irregular") ? "flex" : "none";
     drawTrapezium();
   });
 
   document.querySelectorAll("#bandTop, #bandRight, #bandBottom, #bandLeft")
-    .forEach(cb => cb.addEventListener("change", () => drawTrapezium()));
+    .forEach(cb => {
+      cb.addEventListener("change", function () {
+        drawTrapezium();
+      });
+    });
 </script>
 
 </body>
