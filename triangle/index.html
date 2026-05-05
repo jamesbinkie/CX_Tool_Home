@@ -5,7 +5,6 @@
   <title>Triangle Generator</title>
   <link rel="stylesheet" href="../style.css">
   <style>
-    /* Warning Box Styling: Dark background with thick orange outline */
     .warning-box {
       display: none;
       background: #313338; 
@@ -66,11 +65,11 @@
     </div>
 
     <div id="abc-controls" style="display: none; gap: 20px;">
-        <label>Side A (Left): 
+        <label>Side A (Right): 
             <input id="sideA" type="number" value="500" onclick="this.select()">
             <div class="range">Min 200 mm</div>
         </label>
-        <label>Side B (Right): 
+        <label>Side B (Left): 
             <input id="sideB" type="number" value="500" onclick="this.select()">
             <div class="range">Min 200 mm</div>
         </label>
@@ -100,7 +99,7 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v2.5.1</div>
+<div id="versionLabel">v2.5.2</div>
 
 <script src="script.js"></script>
 
