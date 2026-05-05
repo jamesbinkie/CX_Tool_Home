@@ -6,31 +6,31 @@ window.onload = () => {
     ids.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            el.addEventListener("change", updateUIAndDraw);
+            el.addEventListener("change", updateUI);
             if (el.tagName === "INPUT") {
-                el.addEventListener("input", updateUIAndDraw);
+                // IMPORTANT: Input event only draws. It NEVER changes the text box value.
+                el.addEventListener("input", updateUI);
+                // Blur event handles the safety clamping after you finish typing.
                 el.addEventListener("blur", validateAndClamp);
             }
         }
     });
-    updateUIAndDraw();
+    updateUI();
 };
 
-function updateUIAndDraw() {
+function updateUI() {
     const type = document.getElementById("type").value;
-    const isSymmetric = document.getElementById("isSymmetric").checked;
+    const isSym = document.getElementById("isSymmetric").checked;
     
-    document.getElementById("wh-controls").style.display = (type !== "standard" || isSymmetric) ? "flex" : "none";
+    document.getElementById("wh-controls").style.display = (type !== "standard" || isSym) ? "flex" : "none";
     document.getElementById("standard-toggle-wrap").style.display = (type === "standard") ? "flex" : "none";
-    document.getElementById("abc-controls").style.display = (type === "standard" && !isSymmetric) ? "flex" : "none";
+    document.getElementById("abc-controls").style.display = (type === "standard" && !isSym) ? "flex" : "none";
 
-    // Update the visual hints/warnings without changing user input yet
-    refreshWarnings();
+    refreshHintsAndWarnings();
     drawTriangle();
 }
 
 function validateAndClamp() {
-    // This runs when user clicks out. It forces the 200mm min, 1200/2400 max, and 30deg angle rule.
     const type = document.getElementById("type").value;
     const isSym = document.getElementById("isSymmetric").checked;
     const minVal = 200;
@@ -41,16 +41,14 @@ function validateAndClamp() {
     if (type !== "standard" || isSym) {
         const wIn = document.getElementById("W");
         const hIn = document.getElementById("H");
-        let w = Number(wIn.value) || minVal;
-        let h = Number(hIn.value) || minVal;
+        let w = parseFloat(wIn.value) || minVal;
+        let h = parseFloat(hIn.value) || minVal;
 
-        // Sheet limits
-        if (w > maxW) w = maxW;
-        if (h > maxH) h = maxH;
-        if (w < minVal) w = minVal;
-        if (h < minVal) h = minVal;
+        // Force Min/Max
+        w = Math.max(minVal, Math.min(w, maxW));
+        h = Math.max(minVal, Math.min(h, maxH));
 
-        // Angle Rule: Width must be at least Height * tan(30)
+        // Angle Rule Check
         if (w < h * minRatio) w = Math.ceil(h * minRatio);
         if (h < w * minRatio) h = Math.ceil(w * minRatio);
 
@@ -60,56 +58,45 @@ function validateAndClamp() {
         const aIn = document.getElementById("sideA");
         const bIn = document.getElementById("sideB");
         const cIn = document.getElementById("sideC");
-        let a = Number(aIn.value) || minVal;
-        let b = Number(bIn.value) || minVal;
-        let c = Number(cIn.value) || minVal;
+        let a = parseFloat(aIn.value) || minVal;
+        let b = parseFloat(bIn.value) || minVal;
+        let c = parseFloat(cIn.value) || minVal;
 
-        if (a < minVal) a = minVal;
-        if (b < minVal) b = minVal;
-        if (c < minVal) c = minVal;
-        if (c > maxW) c = maxW;
+        a = Math.max(minVal, a);
+        b = Math.max(minVal, b);
+        c = Math.max(minVal, Math.min(c, maxW));
 
-        // Triangle Inequality: a + b must be > c
+        // Basic Triangle Inequality Fix
         if (a + b <= c) {
-            const diff = (c + 10) - (a + b);
-            a += diff / 2;
-            b += diff / 2;
+            const needed = c + 10;
+            const current = a + b;
+            const factor = needed / current;
+            a = Math.round(a * factor);
+            b = Math.round(b * factor);
         }
 
-        aIn.value = Math.round(a);
-        bIn.value = Math.round(b);
-        cIn.value = Math.round(c);
+        aIn.value = a;
+        bIn.value = b;
+        cIn.value = c;
     }
-
-    updateUIAndDraw();
+    updateUI();
 }
 
-function refreshWarnings() {
+function refreshHintsAndWarnings() {
     const pts = getPoints();
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
     const w = Math.max(...xs) - Math.min(...xs);
     const h = Math.max(...ys) - Math.min(...ys);
 
-    // Sheet Warning (1200 x 2400)
-    const tooBig = (w > 2400 || h > 1200);
-    document.getElementById("sheetWarning").style.display = tooBig ? "block" : "none";
+    // Sheet Warning
+    document.getElementById("sheetWarning").style.display = (w > 2400 || h > 1200) ? "block" : "none";
 
-    // Angle Warning (<30 deg)
+    // Angle Warning
     const angles = calculateAngles(pts);
     const isBanding = document.getElementById("bandBottom").checked || 
                      document.getElementById("bandRight").checked || 
                      document.getElementById("bandLeft").checked;
-    
     document.getElementById("safetyWarning").style.display = (angles.some(a => a < 30) && isBanding) ? "block" : "none";
-
-    // Update Range Labels
-    const minRatio = Math.tan(30 * Math.PI / 180);
-    const type = document.getElementById("type").value;
-    if (type !== "standard" || document.getElementById("isSymmetric").checked) {
-        const currentH = Number(document.getElementById("H").value);
-        const calcMinW = Math.ceil(currentH * minRatio);
-        document.getElementById("rangeW").textContent = `Min ${Math.max(200, calcMinW)} mm — Max 2400 mm`;
-    }
 }
 
 // -------------------------------
@@ -117,20 +104,19 @@ function refreshWarnings() {
 // -------------------------------
 function getPoints() {
     const type = document.getElementById("type").value;
-    const W = Number(document.getElementById("W").value) || 200;
-    const H = Number(document.getElementById("H").value) || 200;
+    const W = parseFloat(document.getElementById("W").value) || 200;
+    const H = parseFloat(document.getElementById("H").value) || 200;
     const isSym = document.getElementById("isSymmetric").checked;
 
     if (type === "right") return [[0, H], [W, H], [0, 0]];
     if (type === "left") return [[0, H], [W, H], [W, 0]];
     if (isSym) return [[0, H], [W, H], [W / 2, 0]];
 
-    const a = Number(document.getElementById("sideA").value) || 200;
-    const b = Number(document.getElementById("sideB").value) || 200;
-    const c = Number(document.getElementById("sideC").value) || 200;
+    const a = parseFloat(document.getElementById("sideA").value) || 200;
+    const b = parseFloat(document.getElementById("sideB").value) || 200;
+    const c = parseFloat(document.getElementById("sideC").value) || 200;
 
-    // Safety fallback for malformed triangles
-    if (a + b <= c) return [[0, 100], [c, 100], [c/2, 0]];
+    if (a + b <= c) return [[0, 100], [c, 100], [c/2, 0]]; // Placeholder
 
     const x = (a * a + c * c - b * b) / (2 * c);
     const y = Math.sqrt(Math.max(0, a * a - x * x));
@@ -152,9 +138,8 @@ function calculateAngles(pts) {
 // -------------------------------
 // RENDERING
 // -------------------------------
-function drawTriangle(targetCanvas = null) {
-    const canvas = targetCanvas || document.getElementById("canvas");
-    if (!canvas) return;
+function drawTriangle() {
+    const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const pts = getPoints();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -172,17 +157,18 @@ function drawTriangle(targetCanvas = null) {
     ctx.moveTo(pts[0][0] * scale + offX, pts[0][1] * scale + offY);
     pts.forEach(p => ctx.lineTo(p[0] * scale + offX, p[1] * scale + offY));
     ctx.closePath();
-    ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
+    ctx.lineWidth = 2; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // Red Offset Banding (Left=0-1, Right=1-2, Bottom=2-0)
+    // Offset Banding (Red Lines)
     const offsetPx = 12;
     const poly = computeOffsetPolygonEdges(pts, scale, offX, offY, offsetPx);
     ctx.lineWidth = 3; ctx.strokeStyle = "red";
     
+    // Corrected Mapping
     const bandingLines = [
-        { id: "bandLeft", p1: poly[0], p2: poly[1] },
+        { id: "bandBottom", p1: poly[0], p2: poly[1] },
         { id: "bandRight", p1: poly[1], p2: poly[2] },
-        { id: "bandBottom", p1: poly[2], p2: poly[0] }
+        { id: "bandLeft", p1: poly[2], p2: poly[0] }
     ];
 
     bandingLines.forEach(line => {
@@ -275,9 +261,6 @@ function drawArrow(ctx, x1, y1, x2, y2) {
     ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
 }
 
-// -------------------------------
-// EXPORTS
-// -------------------------------
 function downloadPNG() {
     const canvas = document.getElementById("canvas");
     const link = document.createElement("a");
