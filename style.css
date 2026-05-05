@@ -1,7 +1,7 @@
 /* ---------- GLOBAL & THEME ---------- */
 body {
   font-family: "Segoe UI", Arial, sans-serif;
-  background: #2b2d31;
+  background: #2b2d31; /* Dark theme */
   color: #f2f3f5;
   margin: 0;
   padding: 20px;
@@ -16,7 +16,13 @@ body {
   padding: 40px 20px;
 }
 
-header h1 { font-size: 2.5rem; margin-bottom: 10px; color: #fff; }
+header h1 { 
+  font-size: 3rem; 
+  margin-bottom: 10px; 
+  color: #fff; 
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
 header p { color: #b5bac1; margin-bottom: 50px; }
 
 .card-grid {
@@ -34,6 +40,9 @@ header p { color: #b5bac1; margin-bottom: 50px; }
   transition: transform 0.2s ease, background 0.2s ease;
   border: 1px solid #1e1f22;
   box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .tool-card:hover {
@@ -42,34 +51,48 @@ header p { color: #b5bac1; margin-bottom: 50px; }
   border-color: #009fe3;
 }
 
-.card-icon { font-size: 3rem; margin-bottom: 20px; color: #009fe3; }
+/* SVG Icon Styling */
+.card-icon { 
+  width: 80px;
+  height: 80px;
+  margin-bottom: 20px; 
+  color: #009fe3; 
+}
 
-/* ---------- TOOL INTERFACE STYLES ---------- */
+.card-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.tool-card h2 {
+  margin: 0 0 15px 0;
+  font-size: 1.6rem;
+}
+
+.tool-card p {
+  color: #b5bac1;
+  line-height: 1.6;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* ---------- VERSION LABEL ---------- */
+#versionLabel {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  font-size: 14px;
+  color: #b5bac1;
+  opacity: 0.5;
+}
+
+/* ---------- TOOL INTERFACE UTILITIES ---------- */
 .panel {
   background: #313338;
   padding: 15px 20px;
   border-radius: 10px;
   margin-bottom: 20px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-}
-
-.controls { display: flex; flex-wrap: wrap; gap: 25px 35px; }
-
-.controls label, .file-controls label {
-  display: flex;
-  flex-direction: column;
-  font-weight: 600;
-  color: #e3e5e8;
-  min-width: 160px;
-}
-
-.controls input, .file-controls input, .controls select {
-  padding: 6px 10px;
-  background: #1e1f22;
-  border: 1px solid #1e1f22;
-  color: #f2f3f5;
-  border-radius: 6px;
-  margin-top: 4px;
 }
 
 button {
@@ -85,23 +108,4 @@ button {
 
 button:hover { background: #007fb5; }
 
-canvas {
-  display: block;
-  margin: 20px auto;
-  background: #dfe8f2;
-  border-radius: 8px;
-  max-width: 100%;
-}
-
-#versionLabel {
-  position: fixed;
-  bottom: 12px;
-  right: 12px;
-  font-size: 14px;
-  color: #b5bac1;
-  opacity: 0.5;
-}
-
-.nav-header { margin-bottom: 20px; }
-.range { font-size: 12px; color: #b5bac1; margin-top: 3px; }
-#Dlabel { display: none; }
+.nav-header { margin-bottom: 20px; text-align: left; }
