@@ -56,9 +56,9 @@
     </div>
 
     <div id="abc-controls" style="display: none; gap: 20px;">
-        <label>Side A (Left): <input id="sideA" type="number" value="500" onclick="this.select()"></label>
-        <label>Side B (Right): <input id="sideB" type="number" value="500" onclick="this.select()"></label>
-        <label>Side C (Bottom): <input id="sideC" type="number" value="600" onclick="this.select()"></label>
+        <label>Side A (Left): <input id="sideA" type="number" value="500" min="1" onclick="this.select()"></label>
+        <label>Side B (Right): <input id="sideB" type="number" value="500" min="1" onclick="this.select()"></label>
+        <label>Side C (Bottom): <input id="sideC" type="number" value="600" min="1" onclick="this.select()"></label>
     </div>
   </div>
 
@@ -81,8 +81,39 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v2.1.0</div>
+<div id="versionLabel">v2.1.1</div>
 
 <script src="script.js"></script>
+
+<script>
+  // Initialize UI and Draw
+  function init() {
+    const inputs = ["type", "isSymmetric", "W", "H", "sideA", "sideB", "sideC", "bandBottom", "bandRight", "bandLeft"];
+    inputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener("change", updateUIAndDraw);
+            if (el.tagName === "INPUT") el.addEventListener("input", updateUIAndDraw);
+        }
+    });
+    updateUIAndDraw();
+  }
+
+  function updateUIAndDraw() {
+    const type = document.getElementById("type").value;
+    const isSymmetric = document.getElementById("isSymmetric").checked;
+    
+    document.getElementById("wh-controls").style.display = (type !== "standard" || isSymmetric) ? "flex" : "none";
+    document.getElementById("standard-toggle-wrap").style.display = (type === "standard") ? "flex" : "none";
+    document.getElementById("abc-controls").style.display = (type === "standard" && !isSymmetric) ? "flex" : "none";
+
+    if (typeof drawTriangle === "function") {
+        drawTriangle();
+    }
+  }
+
+  window.onload = init;
+</script>
+
 </body>
 </html>
