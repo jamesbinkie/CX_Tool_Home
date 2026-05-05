@@ -3,38 +3,50 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Manufacturing Tool Suite</title>
+  <title>CX DXF Tools</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <div class="landing-container">
   <header>
-    <h1>Manufacturing Part Generators</h1>
-    <p>Select a tool below to begin generating DXF and PNG exports.</p>
+    <h1>CX DXF Tools</h1>
+    <p>Select a tool below to begin generating DXF and PNG exports for manufacturing.</p>
   </header>
 
   <div class="card-grid">
     <a href="Trapisium-tool-main/index.html" class="tool-card">
-      <div class="card-icon">⏢</div>
+      <div class="card-icon">
+        <svg viewBox="0 0 100 100" fill="currentColor">
+          <path d="M25,20 L75,20 L95,80 L5,80 Z" />
+        </svg>
+      </div>
       <h2>Trapezium Tool</h2>
-      <p>Generate Regular, Right, and Irregular trapeziums with custom edge banding.</p>
+      <p>Generate Regular, Right, and Irregular trapeziums with custom edge banding options.</p>
     </a>
 
     <a href="triangle/index.html" class="tool-card">
-      <div class="card-icon">▲</div>
+      <div class="card-icon">
+        <svg viewBox="0 0 100 100" fill="currentColor">
+          <path d="M50,10 L90,90 L10,90 Z" />
+        </svg>
+      </div>
       <h2>Triangle Tool</h2>
-      <p>Right-angle, Left-hand, and Scalene triangles with 30° safety warnings.</p>
+      <p>Generate Right, Left, and standard triangles with 30° safety checks and edge banding options.</p>
     </a>
 
     <a href="l-shape/index.html" class="tool-card">
-      <div class="card-icon">┗</div>
+      <div class="card-icon">
+        <svg viewBox="0 0 100 100" fill="currentColor">
+          <path d="M20,10 L45,10 L45,65 L85,65 L85,90 L20,90 Z" />
+        </svg>
+      </div>
       <h2>L-Shape Tool</h2>
-      <p>L-shaped parts with mandatory 60mm internal radius for manufacturing.</p>
+      <p>Generate Right and Left L-shaped parts with a 60mm internal radius and edge banding options.</p>
     </a>
   </div>
 
-  <div id="versionLabel">Suite v2.0.0</div>
+  <div id="versionLabel">Suite v2.6.0</div>
 </div>
 
 </body>
