@@ -5,17 +5,19 @@
   <title>Triangle Generator</title>
   <link rel="stylesheet" href="../style.css">
   <style>
+    /* Refined Warning Box Styling */
     .warning-box {
       display: none;
-      background: #ff4444;
-      color: white;
+      background: #313338; /* Matches panel background */
+      color: #f2f3f5;      /* Matches global text color */
       padding: 15px;
-      border-radius: 8px;
+      border-radius: 10px;
       margin-bottom: 20px;
-      font-weight: bold;
-      border-left: 5px solid #8b0000;
+      font-weight: 600;
+      border: 3px solid #f39c12; /* Thick orange outline */
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
     }
-    #sheetWarning { background: #f39c12; border-left-color: #e67e22; }
+    
     #abc-controls, #wh-controls { display: none; }
     .range { font-size: 11px; color: #009fe3; margin-top: 4px; }
   </style>
@@ -99,7 +101,7 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v2.4.1</div>
+<div id="versionLabel">v2.4.2</div>
 
 <script src="script.js"></script>
 
