@@ -29,16 +29,16 @@ function updateUI() {
 }
 
 /**
- * Handles strict manufacturing constraints on Blur.
- * Prioritizes Sheet Limits (2400x1200) over the Angle Rule (30 deg).
+ * Manufacturing Logic:
+ * Both W and H can be up to 2400, but if one > 1200, the other is capped at 1200.
  */
 function validateAndClamp() {
     const type = document.getElementById("type").value;
     const isSym = document.getElementById("isSymmetric").checked;
     const minVal = 200;
-    const sheetW = 2400;
-    const sheetH = 1200;
-    const minRatio = Math.tan(30 * Math.PI / 180); // ~0.57735
+    const maxSheetDim = 2400;
+    const midSheetDim = 1200;
+    const minRatio = Math.tan(30 * Math.PI / 180); // ~0.577
 
     if (type !== "standard" || isSym) {
         const wIn = document.getElementById("W");
@@ -46,27 +46,31 @@ function validateAndClamp() {
         let w = parseFloat(wIn.value) || minVal;
         let h = parseFloat(hIn.value) || minVal;
 
-        // 1. Enforce absolute sheet limits first
-        w = Math.max(minVal, Math.min(w, sheetW));
-        h = Math.max(minVal, Math.min(h, sheetH));
+        // 1. Primary Sheet Limit (Either can be 2400, but only one)
+        w = Math.max(minVal, Math.min(w, maxSheetDim));
+        h = Math.max(minVal, Math.min(h, maxSheetDim));
 
-        // 2. Enforce 30-degree rule (H must be >= W * 0.577 AND W must be >= H * 0.577)
-        // If Height is too small for the Width...
+        if (w > midSheetDim) h = Math.min(h, midSheetDim);
+        if (h > midSheetDim) w = Math.min(w, midSheetDim);
+
+        // 2. Angle Rule (30 deg)
+        // If one is so large the other can't reach 30 deg without hitting a sheet edge, prioritize the sheet.
         if (h < w * minRatio) {
             h = Math.ceil(w * minRatio);
-            // If the required height exceeds the sheet limit (1200), we MUST cap height and reduce width instead.
-            if (h > sheetH) {
-                h = sheetH;
+            if (h > midSheetDim && w > midSheetDim) { 
+                // Conflict: Force W down to accommodate H=1200 at 30 deg
+                h = midSheetDim;
                 w = Math.floor(h / minRatio);
+            } else if (h > maxSheetDim) {
+                h = maxSheetDim;
+                w = Math.floor(h / minRatio); // Technically width would be huge here
             }
         }
-
-        // If Width is too small for the Height...
+        
         if (w < h * minRatio) {
             w = Math.ceil(h * minRatio);
-            // If the required width exceeds the sheet limit (2400), we MUST cap width and reduce height instead.
-            if (w > sheetW) {
-                w = sheetW;
+            if (w > midSheetDim && h > midSheetDim) {
+                w = midSheetDim;
                 h = Math.floor(w / minRatio);
             }
         }
@@ -74,7 +78,6 @@ function validateAndClamp() {
         wIn.value = w;
         hIn.value = h;
     } else {
-        // Standard Triangle (A, B, C)
         const aIn = document.getElementById("sideA");
         const bIn = document.getElementById("sideB");
         const cIn = document.getElementById("sideC");
@@ -84,13 +87,11 @@ function validateAndClamp() {
 
         a = Math.max(minVal, a);
         b = Math.max(minVal, b);
-        c = Math.max(minVal, Math.min(c, sheetW));
+        c = Math.max(minVal, Math.min(c, maxSheetDim));
 
-        // Simple Inequality Fix
         if (a + b <= c) {
             const needed = c + 10;
-            const current = a + b;
-            const f = needed / current;
+            const f = needed / (a + b);
             a = Math.round(a * f);
             b = Math.round(b * f);
         }
@@ -106,10 +107,19 @@ function refreshHintsAndWarnings() {
     const w = Math.max(...xs) - Math.min(...xs);
     const h = Math.max(...ys) - Math.min(...ys);
 
-    // Sheet Warning
-    document.getElementById("sheetWarning").style.display = (w > 2400 || h > 1200) ? "block" : "none";
+    // Dynamic Labels for Max Values
+    const wInVal = parseFloat(document.getElementById("W").value);
+    const hInVal = parseFloat(document.getElementById("H").value);
+    
+    if (document.getElementById("rangeW")) {
+        document.getElementById("rangeW").textContent = `Min 200 mm — Max ${hInVal > 1200 ? 1200 : 2400} mm`;
+        document.getElementById("rangeH").textContent = `Min 200 mm — Max ${wInVal > 1200 ? 1200 : 2400} mm`;
+    }
 
-    // Angle Warning
+    // Sheet Warning: max(w,h) <= 2400 AND min(w,h) <= 1200
+    const tooBig = (Math.max(w, h) > 2400 || Math.min(w, h) > 1200);
+    document.getElementById("sheetWarning").style.display = tooBig ? "block" : "none";
+
     const angles = calculateAngles(pts);
     const isBanding = document.getElementById("bandBottom").checked || 
                      document.getElementById("bandRight").checked || 
@@ -118,7 +128,7 @@ function refreshHintsAndWarnings() {
 }
 
 // -------------------------------
-// GEOMETRY
+// GEOMETRY & RENDERING
 // -------------------------------
 function getPoints() {
     const type = document.getElementById("type").value;
@@ -152,9 +162,6 @@ function calculateAngles(pts) {
     return angles;
 }
 
-// -------------------------------
-// RENDERING
-// -------------------------------
 function drawTriangle() {
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
@@ -180,7 +187,6 @@ function drawTriangle() {
     const poly = computeOffsetPolygonEdges(pts, scale, offX, offY, offsetPx);
     ctx.lineWidth = 3; ctx.strokeStyle = "red";
     
-    // User Mapping: Left=Bottom, Right=Right, Bottom=Left
     const bandingLines = [
         { id: "bandLeft", p1: poly[0], p2: poly[1] },
         { id: "bandRight", p1: poly[1], p2: poly[2] },
@@ -245,14 +251,14 @@ function drawDimensions(ctx, pts, scale, offX, offY) {
             nx = -nx; ny = -ny;
         }
 
-        const dimOffset = 60; // Increased padding
+        const dimOffset = 60;
         const lx1 = x1 + nx * dimOffset, ly1 = y1 + ny * dimOffset;
         const lx2 = x2 + nx * dimOffset, ly2 = y2 + ny * dimOffset;
         const mx = (lx1 + lx2) / 2, my = (ly1 + ly2) / 2;
 
         const realDist = Math.sqrt(Math.pow(p2[0]-p1[0], 2) + Math.pow(p2[1]-p1[1], 2)).toFixed(1);
         const label = `${realDist} mm`;
-        const textWidth = ctx.measureText(label).width + 15; // Clean break width
+        const textWidth = ctx.measureText(label).width + 15;
 
         const angle = Math.atan2(ly2 - ly1, lx2 - lx1);
         ctx.beginPath();
