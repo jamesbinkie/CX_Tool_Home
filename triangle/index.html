@@ -15,6 +15,10 @@
       font-weight: bold;
       border-left: 5px solid #8b0000;
     }
+    #sheetWarning {
+        background: #f39c12;
+        border-left-color: #e67e22;
+    }
     #abc-controls, #wh-controls { display: none; }
     .range { font-size: 11px; color: #009fe3; margin-top: 4px; }
   </style>
@@ -30,7 +34,11 @@
   <h2>Triangle Generator (mm)</h2>
 
   <div id="safetyWarning" class="warning-box">
-    ⚠️ Corner angle is less than 30°: Clamped to minimum safe angle for edge banding.
+    ⚠️ Corner angle is less than 30°: Too tight for edge banding!
+  </div>
+
+  <div id="sheetWarning" class="warning-box">
+    ⚠️ Part exceeds maximum sheet size (2400 x 1200 mm). 
   </div>
 
   <div class="controls panel">
@@ -44,12 +52,12 @@
 
     <div id="wh-controls" style="display: flex; gap: 20px;">
         <label>Width (W):
-            <input id="W" type="number" value="500" min="200" onclick="this.select()">
-            <div class="range">Min 200 mm</div>
+            <input id="W" type="number" value="500" min="200" max="2440" onclick="this.select()">
+            <div class="range" id="rangeW">Min 200 mm — Max 2400 mm</div>
         </label>
         <label>Height (H):
-            <input id="H" type="number" value="500" min="200" onclick="this.select()">
-            <div class="range">Min 200 mm</div>
+            <input id="H" type="number" value="500" min="200" max="1220" onclick="this.select()">
+            <div class="range" id="rangeH">Min 200 mm — Max 1200 mm</div>
         </label>
     </div>
 
@@ -62,15 +70,15 @@
     <div id="abc-controls" style="display: none; gap: 20px;">
         <label>Side A (Left): 
             <input id="sideA" type="number" value="500" min="200" onclick="this.select()">
-            <div class="range">Min 200 mm</div>
+            <div class="range" id="rangeA">Min 200 mm</div>
         </label>
         <label>Side B (Right): 
             <input id="sideB" type="number" value="500" min="200" onclick="this.select()">
-            <div class="range">Min 200 mm</div>
+            <div class="range" id="rangeB">Min 200 mm</div>
         </label>
         <label>Side C (Bottom): 
             <input id="sideC" type="number" value="600" min="200" onclick="this.select()">
-            <div class="range">Min 200 mm</div>
+            <div class="range" id="rangeC">Max 2400 mm</div>
         </label>
     </div>
   </div>
@@ -94,7 +102,7 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v2.3.0</div>
+<div id="versionLabel">v2.4.0</div>
 
 <script src="script.js"></script>
 
