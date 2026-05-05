@@ -8,9 +8,7 @@ window.onload = () => {
         if (el) {
             el.addEventListener("change", updateUI);
             if (el.tagName === "INPUT") {
-                // IMPORTANT: Input event only draws. It NEVER changes the text box value.
                 el.addEventListener("input", updateUI);
-                // Blur event handles the safety clamping after you finish typing.
                 el.addEventListener("blur", validateAndClamp);
             }
         }
@@ -44,13 +42,33 @@ function validateAndClamp() {
         let w = parseFloat(wIn.value) || minVal;
         let h = parseFloat(hIn.value) || minVal;
 
-        // Force Min/Max
+        // 1. Initial Sheet Boundary Cap
         w = Math.max(minVal, Math.min(w, maxW));
         h = Math.max(minVal, Math.min(h, maxH));
 
-        // Angle Rule Check
-        if (w < h * minRatio) w = Math.ceil(h * minRatio);
-        if (h < w * minRatio) h = Math.ceil(w * minRatio);
+        // 2. Angle Rule Check: atan(H/W) >= 30 and atan(W/H) >= 30
+        // This requires H >= W*0.577 AND W >= H*0.577
+        
+        if (h < w * minRatio) {
+            // Height is too small for this Width. 
+            // Try to increase Height first.
+            h = Math.ceil(w * minRatio);
+            // If Height now exceeds sheet limit, we MUST cap Height and reduce Width.
+            if (h > maxH) {
+                h = maxH;
+                w = Math.floor(h / minRatio);
+            }
+        }
+        
+        if (w < h * minRatio) {
+            // Width is too small for this Height.
+            w = Math.ceil(h * minRatio);
+            // If Width now exceeds sheet limit, cap Width and reduce Height.
+            if (w > maxW) {
+                w = maxW;
+                h = Math.floor(w / minRatio);
+            }
+        }
 
         wIn.value = w;
         hIn.value = h;
@@ -66,7 +84,7 @@ function validateAndClamp() {
         b = Math.max(minVal, b);
         c = Math.max(minVal, Math.min(c, maxW));
 
-        // Basic Triangle Inequality Fix
+        // Basic Triangle Inequality Fix: Ensure it remains a drawable triangle
         if (a + b <= c) {
             const needed = c + 10;
             const current = a + b;
@@ -88,7 +106,7 @@ function refreshHintsAndWarnings() {
     const w = Math.max(...xs) - Math.min(...xs);
     const h = Math.max(...ys) - Math.min(...ys);
 
-    // Sheet Warning
+    // Sheet Warning (Internal geometry check)
     document.getElementById("sheetWarning").style.display = (w > 2400 || h > 1200) ? "block" : "none";
 
     // Angle Warning
@@ -100,7 +118,7 @@ function refreshHintsAndWarnings() {
 }
 
 // -------------------------------
-// GEOMETRY
+// GEOMETRY & RENDERING
 // -------------------------------
 function getPoints() {
     const type = document.getElementById("type").value;
@@ -116,7 +134,7 @@ function getPoints() {
     const b = parseFloat(document.getElementById("sideB").value) || 200;
     const c = parseFloat(document.getElementById("sideC").value) || 200;
 
-    if (a + b <= c) return [[0, 100], [c, 100], [c/2, 0]]; // Placeholder
+    if (a + b <= c) return [[0, 100], [c, 100], [c/2, 0]];
 
     const x = (a * a + c * c - b * b) / (2 * c);
     const y = Math.sqrt(Math.max(0, a * a - x * x));
@@ -135,9 +153,6 @@ function calculateAngles(pts) {
     return angles;
 }
 
-// -------------------------------
-// RENDERING
-// -------------------------------
 function drawTriangle() {
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
@@ -159,16 +174,14 @@ function drawTriangle() {
     ctx.closePath();
     ctx.lineWidth = 2; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // Offset Banding (Red Lines)
     const offsetPx = 12;
     const poly = computeOffsetPolygonEdges(pts, scale, offX, offY, offsetPx);
     ctx.lineWidth = 3; ctx.strokeStyle = "red";
     
-    // Corrected Mapping
     const bandingLines = [
-        { id: "bandBottom", p1: poly[0], p2: poly[1] },
+        { id: "bandLeft", p1: poly[0], p2: poly[1] },
         { id: "bandRight", p1: poly[1], p2: poly[2] },
-        { id: "bandLeft", p1: poly[2], p2: poly[0] }
+        { id: "bandBottom", p1: poly[2], p2: poly[0] }
     ];
 
     bandingLines.forEach(line => {
