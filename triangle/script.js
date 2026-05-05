@@ -28,13 +28,17 @@ function updateUI() {
     drawTriangle();
 }
 
+/**
+ * Handles strict manufacturing constraints on Blur.
+ * Prioritizes Sheet Limits (2400x1200) over the Angle Rule (30 deg).
+ */
 function validateAndClamp() {
     const type = document.getElementById("type").value;
     const isSym = document.getElementById("isSymmetric").checked;
     const minVal = 200;
-    const maxW = 2400;
-    const maxH = 1200;
-    const minRatio = Math.tan(30 * Math.PI / 180); // ~0.577
+    const sheetW = 2400;
+    const sheetH = 1200;
+    const minRatio = Math.tan(30 * Math.PI / 180); // ~0.57735
 
     if (type !== "standard" || isSym) {
         const wIn = document.getElementById("W");
@@ -42,30 +46,27 @@ function validateAndClamp() {
         let w = parseFloat(wIn.value) || minVal;
         let h = parseFloat(hIn.value) || minVal;
 
-        // 1. Initial Sheet Boundary Cap
-        w = Math.max(minVal, Math.min(w, maxW));
-        h = Math.max(minVal, Math.min(h, maxH));
+        // 1. Enforce absolute sheet limits first
+        w = Math.max(minVal, Math.min(w, sheetW));
+        h = Math.max(minVal, Math.min(h, sheetH));
 
-        // 2. Angle Rule Check: atan(H/W) >= 30 and atan(W/H) >= 30
-        // This requires H >= W*0.577 AND W >= H*0.577
-        
+        // 2. Enforce 30-degree rule (H must be >= W * 0.577 AND W must be >= H * 0.577)
+        // If Height is too small for the Width...
         if (h < w * minRatio) {
-            // Height is too small for this Width. 
-            // Try to increase Height first.
             h = Math.ceil(w * minRatio);
-            // If Height now exceeds sheet limit, we MUST cap Height and reduce Width.
-            if (h > maxH) {
-                h = maxH;
+            // If the required height exceeds the sheet limit (1200), we MUST cap height and reduce width instead.
+            if (h > sheetH) {
+                h = sheetH;
                 w = Math.floor(h / minRatio);
             }
         }
-        
+
+        // If Width is too small for the Height...
         if (w < h * minRatio) {
-            // Width is too small for this Height.
             w = Math.ceil(h * minRatio);
-            // If Width now exceeds sheet limit, cap Width and reduce Height.
-            if (w > maxW) {
-                w = maxW;
+            // If the required width exceeds the sheet limit (2400), we MUST cap width and reduce height instead.
+            if (w > sheetW) {
+                w = sheetW;
                 h = Math.floor(w / minRatio);
             }
         }
@@ -73,6 +74,7 @@ function validateAndClamp() {
         wIn.value = w;
         hIn.value = h;
     } else {
+        // Standard Triangle (A, B, C)
         const aIn = document.getElementById("sideA");
         const bIn = document.getElementById("sideB");
         const cIn = document.getElementById("sideC");
@@ -82,20 +84,18 @@ function validateAndClamp() {
 
         a = Math.max(minVal, a);
         b = Math.max(minVal, b);
-        c = Math.max(minVal, Math.min(c, maxW));
+        c = Math.max(minVal, Math.min(c, sheetW));
 
-        // Basic Triangle Inequality Fix: Ensure it remains a drawable triangle
+        // Simple Inequality Fix
         if (a + b <= c) {
             const needed = c + 10;
             const current = a + b;
-            const factor = needed / current;
-            a = Math.round(a * factor);
-            b = Math.round(b * factor);
+            const f = needed / current;
+            a = Math.round(a * f);
+            b = Math.round(b * f);
         }
 
-        aIn.value = a;
-        bIn.value = b;
-        cIn.value = c;
+        aIn.value = a; bIn.value = b; cIn.value = c;
     }
     updateUI();
 }
@@ -106,7 +106,7 @@ function refreshHintsAndWarnings() {
     const w = Math.max(...xs) - Math.min(...xs);
     const h = Math.max(...ys) - Math.min(...ys);
 
-    // Sheet Warning (Internal geometry check)
+    // Sheet Warning
     document.getElementById("sheetWarning").style.display = (w > 2400 || h > 1200) ? "block" : "none";
 
     // Angle Warning
@@ -118,7 +118,7 @@ function refreshHintsAndWarnings() {
 }
 
 // -------------------------------
-// GEOMETRY & RENDERING
+// GEOMETRY
 // -------------------------------
 function getPoints() {
     const type = document.getElementById("type").value;
@@ -135,7 +135,6 @@ function getPoints() {
     const c = parseFloat(document.getElementById("sideC").value) || 200;
 
     if (a + b <= c) return [[0, 100], [c, 100], [c/2, 0]];
-
     const x = (a * a + c * c - b * b) / (2 * c);
     const y = Math.sqrt(Math.max(0, a * a - x * x));
     return [[0, y], [c, y], [x, 0]];
@@ -153,6 +152,9 @@ function calculateAngles(pts) {
     return angles;
 }
 
+// -------------------------------
+// RENDERING
+// -------------------------------
 function drawTriangle() {
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
@@ -178,6 +180,7 @@ function drawTriangle() {
     const poly = computeOffsetPolygonEdges(pts, scale, offX, offY, offsetPx);
     ctx.lineWidth = 3; ctx.strokeStyle = "red";
     
+    // User Mapping: Left=Bottom, Right=Right, Bottom=Left
     const bandingLines = [
         { id: "bandLeft", p1: poly[0], p2: poly[1] },
         { id: "bandRight", p1: poly[1], p2: poly[2] },
@@ -242,14 +245,14 @@ function drawDimensions(ctx, pts, scale, offX, offY) {
             nx = -nx; ny = -ny;
         }
 
-        const dimOffset = 50;
+        const dimOffset = 60; // Increased padding
         const lx1 = x1 + nx * dimOffset, ly1 = y1 + ny * dimOffset;
         const lx2 = x2 + nx * dimOffset, ly2 = y2 + ny * dimOffset;
         const mx = (lx1 + lx2) / 2, my = (ly1 + ly2) / 2;
 
         const realDist = Math.sqrt(Math.pow(p2[0]-p1[0], 2) + Math.pow(p2[1]-p1[1], 2)).toFixed(1);
         const label = `${realDist} mm`;
-        const textWidth = ctx.measureText(label).width + 10;
+        const textWidth = ctx.measureText(label).width + 15; // Clean break width
 
         const angle = Math.atan2(ly2 - ly1, lx2 - lx1);
         ctx.beginPath();
@@ -257,7 +260,7 @@ function drawDimensions(ctx, pts, scale, offX, offY) {
         ctx.lineTo(mx - Math.cos(angle) * (textWidth/2), my - Math.sin(angle) * (textWidth/2));
         ctx.moveTo(mx + Math.cos(angle) * (textWidth/2), my + Math.sin(angle) * (textWidth/2));
         ctx.lineTo(lx2, ly2);
-        ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
+        ctx.strokeStyle = "#444"; ctx.lineWidth = 1.2; ctx.stroke();
 
         drawArrow(ctx, lx1, ly1, lx2, ly2);
         drawArrow(ctx, lx2, ly2, lx1, ly1);
@@ -267,7 +270,7 @@ function drawDimensions(ctx, pts, scale, offX, offY) {
 
 function drawArrow(ctx, x1, y1, x2, y2) {
     const angle = Math.atan2(y2 - y1, x2 - x1);
-    const size = 7;
+    const size = 8;
     ctx.beginPath(); ctx.moveTo(x2, y2);
     ctx.lineTo(x2 - size * Math.cos(angle - Math.PI / 6), y2 - size * Math.sin(angle - Math.PI / 6));
     ctx.lineTo(x2 - size * Math.cos(angle + Math.PI / 6), y2 - size * Math.sin(angle + Math.PI / 6));
