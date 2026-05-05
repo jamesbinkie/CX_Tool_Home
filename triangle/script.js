@@ -28,18 +28,13 @@ function updateUI() {
     drawTriangle();
 }
 
-/**
- * Manufacturing Logic:
- * Both W and H can reach 2400mm, but as soon as one exceeds 1200mm, 
- * the other is automatically capped at 1200mm.
- */
 function validateAndClamp() {
     const type = document.getElementById("type").value;
     const isSym = document.getElementById("isSymmetric").checked;
     const minVal = 200;
     const maxSheetDim = 2400;
     const midSheetDim = 1200;
-    const minRatio = Math.tan(30 * Math.PI / 180); // ~0.577
+    const minRatio = Math.tan(30 * Math.PI / 180);
 
     if (type !== "standard" || isSym) {
         const wIn = document.getElementById("W");
@@ -47,28 +42,22 @@ function validateAndClamp() {
         let w = parseFloat(wIn.value) || minVal;
         let h = parseFloat(hIn.value) || minVal;
 
-        // 1. Primary Sheet Limit (Either can reach 2400, but only one at a time)
         w = Math.max(minVal, Math.min(w, maxSheetDim));
         h = Math.max(minVal, Math.min(h, maxSheetDim));
 
         if (w > midSheetDim) h = Math.min(h, midSheetDim);
         else if (h > midSheetDim) w = Math.min(w, midSheetDim);
 
-        // 2. Angle Rule (30 deg)
-        // If Height is too small for Width...
         if (h < w * minRatio) {
             h = Math.ceil(w * minRatio);
-            // If required height exceeds sheet limits, reduce width instead
             if (h > midSheetDim && w > midSheetDim) {
                 h = midSheetDim;
                 w = Math.floor(h / minRatio);
             }
         }
         
-        // If Width is too small for Height...
         if (w < h * minRatio) {
             w = Math.ceil(h * minRatio);
-            // If required width exceeds sheet limits, reduce height instead
             if (w > midSheetDim && h > midSheetDim) {
                 w = midSheetDim;
                 h = Math.floor(w / minRatio);
@@ -106,7 +95,6 @@ function refreshHintsAndWarnings() {
     const w = Math.max(...xs) - Math.min(...xs);
     const h = Math.max(...ys) - Math.min(...ys);
 
-    // Dynamic Labels for Max Values based on current input
     const wInVal = parseFloat(document.getElementById("W").value);
     const hInVal = parseFloat(document.getElementById("H").value);
     
@@ -115,11 +103,9 @@ function refreshHintsAndWarnings() {
         document.getElementById("rangeH").textContent = `Min 200 mm — Max ${wInVal > 1200 ? 1200 : 2400} mm`;
     }
 
-    // Sheet Warning: max(w,h) <= 2400 AND min(w,h) <= 1200
     const tooBig = (Math.max(w, h) > 2400 || Math.min(w, h) > 1200);
     document.getElementById("sheetWarning").style.display = tooBig ? "block" : "none";
 
-    // Angle Warning
     const angles = calculateAngles(pts);
     const isBanding = document.getElementById("bandBottom").checked || 
                      document.getElementById("bandRight").checked || 
@@ -127,9 +113,6 @@ function refreshHintsAndWarnings() {
     document.getElementById("safetyWarning").style.display = (angles.some(a => a < 30) && isBanding) ? "block" : "none";
 }
 
-// -------------------------------
-// GEOMETRY & RENDERING (Same as previous)
-// -------------------------------
 function getPoints() {
     const type = document.getElementById("type").value;
     const W = parseFloat(document.getElementById("W").value) || 200;
@@ -187,9 +170,10 @@ function drawTriangle() {
     const poly = computeOffsetPolygonEdges(pts, scale, offX, offY, offsetPx);
     ctx.lineWidth = 3; ctx.strokeStyle = "red";
     
+    // SWAPPED Mapping: Left=Edge 1, Right=Edge 0, Bottom=Edge 2
     const bandingLines = [
-        { id: "bandLeft", p1: poly[0], p2: poly[1] },
-        { id: "bandRight", p1: poly[1], p2: poly[2] },
+        { id: "bandRight", p1: poly[0], p2: poly[1] },
+        { id: "bandLeft", p1: poly[1], p2: poly[2] },
         { id: "bandBottom", p1: poly[2], p2: poly[0] }
     ];
 
@@ -285,9 +269,21 @@ function drawArrow(ctx, x1, y1, x2, y2) {
 
 function downloadPNG() {
     const canvas = document.getElementById("canvas");
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const tctx = tempCanvas.getContext("2d");
+    
+    // PURE WHITE BACKGROUND
+    tctx.fillStyle = "#ffffff";
+    tctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    
+    // Draw the actual triangle content onto the temp canvas
+    tctx.drawImage(canvas, 0, 0);
+
     const link = document.createElement("a");
     link.download = (document.getElementById("fileName").value || "triangle") + ".png";
-    link.href = canvas.toDataURL("image/png");
+    link.href = tempCanvas.toDataURL("image/png");
     link.click();
 }
 
