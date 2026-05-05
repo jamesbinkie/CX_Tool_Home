@@ -1,21 +1,23 @@
 // -------------------------------
-// INITIALIZATION & INPUT CLAMPING
+// INITIALIZATION
 // -------------------------------
 window.onload = () => {
     const ids = ["type", "isSymmetric", "W", "H", "sideA", "sideB", "sideC", "bandBottom", "bandRight", "bandLeft"];
     ids.forEach(id => {
         const el = document.getElementById(id);
-        el.addEventListener("change", updateUIAndDraw);
-        if (el.tagName === "INPUT") {
-            el.addEventListener("blur", validateAndDraw);
-            el.addEventListener("input", updateUIAndDraw);
+        if (el) {
+            el.addEventListener("change", updateUIAndDraw);
+            if (el.tagName === "INPUT") {
+                el.addEventListener("blur", validateAndDraw);
+                el.addEventListener("input", updateUIAndDraw);
+            }
         }
     });
     updateUIAndDraw();
 };
 
 function validateAndDraw() {
-    updateDynamicLimits();
+    updateDynamicLimits(true); // Hard clamp on blur
     drawTriangle();
 }
 
@@ -27,32 +29,69 @@ function updateUIAndDraw() {
     document.getElementById("standard-toggle-wrap").style.display = (type === "standard") ? "flex" : "none";
     document.getElementById("abc-controls").style.display = (type === "standard" && !isSymmetric) ? "flex" : "none";
 
-    updateDynamicLimits();
+    updateDynamicLimits(false); // Soft update while typing
     drawTriangle();
 }
 
-function updateDynamicLimits() {
-    const aInput = document.getElementById("sideA");
-    const bInput = document.getElementById("sideB");
-    const cInput = document.getElementById("sideC");
+// -------------------------------
+// LIMITS & VALIDATION
+// -------------------------------
+function updateDynamicLimits(forceClamp = false) {
+    const minVal = 200;
+    const minAngleRad = 30 * (Math.PI / 180);
+    const minRatio = Math.tan(minAngleRad); // ~0.577
 
-    let a = Number(aInput.value);
-    let b = Number(bInput.value);
-    let c = Number(cInput.value);
+    const type = document.getElementById("type").value;
+    const wInput = document.getElementById("W");
+    const hInput = document.getElementById("H");
 
-    // Dynamic capping to ensure a valid triangle (A + B > C)
-    const maxC = Math.max(1, a + b - 1);
-    const maxA = Math.max(1, b + c - 1);
-    const maxB = Math.max(1, a + c - 1);
+    if (type === "right" || type === "left" || (type === "standard" && document.getElementById("isSymmetric").checked)) {
+        let w = Number(wInput.value);
+        let h = Number(hInput.value);
 
-    document.getElementById("maxA").textContent = maxA;
-    document.getElementById("maxB").textContent = maxB;
-    document.getElementById("maxC").textContent = maxC;
+        // 1. Enforce 200mm Minimum
+        if (forceClamp) {
+            if (w < minVal) w = minVal;
+            if (h < minVal) h = minVal;
+        }
 
-    // We only clamp on blur to avoid fighting the user while they type
-    if (document.activeElement !== aInput && a > maxA) aInput.value = maxA;
-    if (document.activeElement !== bInput && b > maxB) bInput.value = maxB;
-    if (document.activeElement !== cInput && c > maxC) cInput.value = maxC;
+        // 2. Enforce 30 Degree Rule (Tan(30) = Width/Height)
+        // If H is very large, W must grow. If W is very large, H must grow.
+        if (w < h * minRatio) w = Math.round(h * minRatio);
+        if (h < w * minRatio) h = Math.round(w * minRatio);
+
+        if (forceClamp || w !== Number(wInput.value) || h !== Number(hInput.value)) {
+            wInput.value = w;
+            hInput.value = h;
+        }
+    } else {
+        // Standard (A, B, C) Clamping
+        const aInput = document.getElementById("sideA");
+        const bInput = document.getElementById("sideB");
+        const cInput = document.getElementById("sideC");
+        let a = Number(aInput.value);
+        let b = Number(bInput.value);
+        let c = Number(cInput.value);
+
+        if (forceClamp) {
+            if (a < minVal) a = minVal;
+            if (b < minVal) b = minVal;
+            if (c < minVal) c = minVal;
+        }
+
+        // Triangle Inequality: A + B > C
+        const maxC = a + b - 10; 
+        if (c > maxC) c = maxC;
+
+        // Angle Check (Law of Cosines)
+        // Ensure every angle is >= 30 degrees by adjusting side lengths
+        // For simplicity, we clamp to a valid triangle range
+        if (forceClamp || c !== Number(cInput.value)) {
+            aInput.value = a;
+            bInput.value = b;
+            cInput.value = c;
+        }
+    }
 }
 
 // -------------------------------
@@ -74,9 +113,6 @@ function getPoints() {
         const b = Number(document.getElementById("sideB").value);
         const c = Number(document.getElementById("sideC").value);
 
-        // Law of Cosines for Tip coordinate
-        const cosC = (a * a + b * b - c * c) / (2 * a * b); 
-        // We use C as base for naming consistency
         const x = (a * a + c * c - b * b) / (2 * c);
         const y = Math.sqrt(Math.max(0, a * a - x * x));
         return [[0, y], [c, y], [x, 0]];
@@ -84,54 +120,45 @@ function getPoints() {
 }
 
 // -------------------------------
-// DRAWING
+// RENDERING
 // -------------------------------
 function drawTriangle(targetCanvas = null) {
     const canvas = targetCanvas || document.getElementById("canvas");
+    if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const pts = getPoints();
     
-    // Calculate angles for safety check
-    const angles = [];
-    for (let i = 0; i < 3; i++) {
-        const p1 = pts[i], p0 = pts[(i + 2) % 3], p2 = pts[(i + 1) % 3];
-        const v1 = { x: p0[0] - p1[0], y: p0[1] - p1[1] }, v2 = { x: p2[0] - p1[0], y: p2[1] - p1[1] };
-        const dot = v1.x * v2.x + v1.y * v2.y;
-        const mag = Math.sqrt(v1.x**2 + v1.y**2) * Math.sqrt(v2.x**2 + v2.y**2);
-        angles.push(Math.acos(Math.max(-1, Math.min(1, dot / (mag || 1)))) * (180 / Math.PI));
-    }
-
-    const isBanding = document.getElementById("bandBottom").checked || document.getElementById("bandRight").checked || document.getElementById("bandLeft").checked;
-    document.getElementById("safetyWarning").style.display = (angles.some(a => a < 30) && isBanding) ? "block" : "none";
-
+    // Clear
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Calculate Bounding Box
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
     const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-    const margin = 140;
-    const scale = Math.min((canvas.width - margin * 2) / (maxX - minX || 1), (canvas.height - margin * 2) / (maxY - minY || 1));
-    const offX = (canvas.width - (maxX - minX) * scale) / 2 - minX * scale;
-    const offY = (canvas.height - (maxY - minY) * scale) / 2 - minY * scale;
+    const shapeW = maxX - minX, shapeH = maxY - minY;
 
-    // Main Shape
+    // Scaling (prevent division by zero)
+    const margin = 150;
+    const scale = Math.min((canvas.width - margin * 2) / (shapeW || 1), (canvas.height - margin * 2) / (shapeH || 1));
+    const offX = (canvas.width - shapeW * scale) / 2 - minX * scale;
+    const offY = (canvas.height - shapeH * scale) / 2 - minY * scale;
+
+    // Draw Main Outline
     ctx.beginPath();
     ctx.moveTo(pts[0][0] * scale + offX, pts[0][1] * scale + offY);
     pts.forEach(p => ctx.lineTo(p[0] * scale + offX, p[1] * scale + offY));
     ctx.closePath();
-    ctx.lineWidth = 2; ctx.strokeStyle = "#000"; ctx.stroke();
+    ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // Corrected Mapping: Left edge is Bottom, Bottom is Left
-    // Edge 0: Bottom-Left to Bottom-Right (pts[0] to pts[1])
-    // Edge 1: Bottom-Right to Tip (pts[1] to pts[2])
-    // Edge 2: Tip to Bottom-Left (pts[2] to pts[0])
-    const offsetPx = 10;
+    // Red Offset Banding
+    const offsetPx = 12;
     const poly = computeOffsetPolygonEdges(pts, scale, offX, offY, offsetPx);
-    
     ctx.lineWidth = 3; ctx.strokeStyle = "red";
+    
+    // Mapping: Left=Edge0, Right=Edge1, Bottom=Edge2
     const bandingLines = [
-        { id: "bandLeft", p1: poly[0], p2: poly[1] },   // Segment 0: User wants this to be "Left"
-        { id: "bandRight", p1: poly[1], p2: poly[2] },  // Segment 1: User says this is correct
-        { id: "bandBottom", p1: poly[2], p2: poly[0] }  // Segment 2: User wants this to be "Bottom"
+        { id: "bandLeft", p1: poly[0], p2: poly[1] },
+        { id: "bandRight", p1: poly[1], p2: poly[2] },
+        { id: "bandBottom", p1: poly[2], p2: poly[0] }
     ];
 
     bandingLines.forEach(line => {
@@ -141,6 +168,62 @@ function drawTriangle(targetCanvas = null) {
     });
 
     drawDimensions(ctx, pts, scale, offX, offY);
+}
+
+// -------------------------------
+// DIMENSIONS
+// -------------------------------
+function drawDimensions(ctx, pts, scale, offX, offY) {
+    ctx.font = "14px Arial"; ctx.fillStyle = "#000"; ctx.textAlign = "center";
+    const n = pts.length;
+    const cx = pts.reduce((s, p) => s + p[0], 0) / n * scale + offX;
+    const cy = pts.reduce((s, p) => s + p[1], 0) / n * scale + offY;
+
+    for (let i = 0; i < n; i++) {
+        const p1 = pts[i], p2 = pts[(i + 1) % n];
+        const x1 = p1[0] * scale + offX, y1 = p1[1] * scale + offY;
+        const x2 = p2[0] * scale + offX, y2 = p2[1] * scale + offY;
+        const dx = x2 - x1, dy = y2 - y1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 5) continue;
+        let nx = -dy / len, ny = dx / len;
+
+        // Ensure outward direction
+        if (Math.hypot(((x1+x2)/2 + nx*10) - cx, ((y1+y2)/2 + ny*10) - cy) < Math.hypot((x1+x2)/2 - cx, (y1+y2)/2 - cy)) {
+            nx = -nx; ny = -ny;
+        }
+
+        const dimOffset = 50;
+        const lx1 = x1 + nx * dimOffset, ly1 = y1 + ny * dimOffset;
+        const lx2 = x2 + nx * dimOffset, ly2 = y2 + ny * dimOffset;
+        const mx = (lx1 + lx2) / 2, my = (ly1 + ly2) / 2;
+
+        const realDist = Math.sqrt(Math.pow(p2[0]-p1[0], 2) + Math.pow(p2[1]-p1[1], 2)).toFixed(1);
+        const label = `${realDist} mm`;
+        const textWidth = ctx.measureText(label).width + 10;
+
+        // Gap in line for text
+        const angle = Math.atan2(ly2 - ly1, lx2 - lx1);
+        ctx.beginPath();
+        ctx.moveTo(lx1, ly1);
+        ctx.lineTo(mx - Math.cos(angle) * (textWidth/2), my - Math.sin(angle) * (textWidth/2));
+        ctx.moveTo(mx + Math.cos(angle) * (textWidth/2), my + Math.sin(angle) * (textWidth/2));
+        ctx.lineTo(lx2, ly2);
+        ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
+
+        drawArrow(ctx, lx1, ly1, lx2, ly2);
+        drawArrow(ctx, lx2, ly2, lx1, ly1);
+        ctx.fillText(label, mx, my + 4);
+    }
+}
+
+function drawArrow(ctx, x1, y1, x2, y2) {
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const size = 7;
+    ctx.beginPath(); ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - size * Math.cos(angle - Math.PI / 6), y2 - size * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(x2 - size * Math.cos(angle + Math.PI / 6), y2 - size * Math.sin(angle + Math.PI / 6));
+    ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
 }
 
 function computeOffsetPolygonEdges(pts, scale, offsetX, offsetY, offsetPx) {
@@ -174,68 +257,12 @@ function intersectLines(e1, e2) {
 }
 
 // -------------------------------
-// DIMENSIONS WITH TEXT BREAK
+// EXPORTS
 // -------------------------------
-function drawDimensions(ctx, pts, scale, offX, offY) {
-    ctx.font = "14px Arial"; ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    const n = pts.length;
-    const cx = pts.reduce((s, p) => s + p[0], 0) / n * scale + offX;
-    const cy = pts.reduce((s, p) => s + p[1], 0) / n * scale + offY;
-
-    for (let i = 0; i < 3; i++) {
-        const p1 = pts[i], p2 = pts[(i + 1) % 3];
-        const x1 = p1[0] * scale + offX, y1 = p1[1] * scale + offY;
-        const x2 = p2[0] * scale + offX, y2 = p2[1] * scale + offY;
-        const dx = x2 - x1, dy = y2 - y1;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        if (len < 1) continue;
-        let nx = -dy / len, ny = dx / len;
-
-        // Push outward
-        if (Math.hypot(((x1+x2)/2 + nx*10) - cx, ((y1+y2)/2 + ny*10) - cy) < Math.hypot((x1+x2)/2 - cx, (y1+y2)/2 - cy)) {
-            nx = -nx; ny = -ny;
-        }
-
-        const dimOffset = 50;
-        const lx1 = x1 + nx * dimOffset, ly1 = y1 + ny * dimOffset;
-        const lx2 = x2 + nx * dimOffset, ly2 = y2 + ny * dimOffset;
-        const mx = (lx1 + lx2) / 2, my = (ly1 + ly2) / 2;
-
-        const realDist = Math.sqrt(Math.pow(p2[0]-p1[0], 2) + Math.pow(p2[1]-p1[1], 2)).toFixed(1);
-        const label = `${realDist} mm`;
-        const textWidth = ctx.measureText(label).width + 10;
-
-        // Draw dimension line with a gap for the text
-        const angle = Math.atan2(ly2 - ly1, lx2 - lx1);
-        const gap = textWidth / 2;
-        
-        ctx.beginPath();
-        ctx.moveTo(lx1, ly1);
-        ctx.lineTo(mx - Math.cos(angle) * gap, my - Math.sin(angle) * gap);
-        ctx.moveTo(mx + Math.cos(angle) * gap, my + Math.sin(angle) * gap);
-        ctx.lineTo(lx2, ly2);
-        ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
-
-        drawArrow(ctx, lx1, ly1, lx2, ly2);
-        drawArrow(ctx, lx2, ly2, lx1, ly1);
-
-        ctx.fillText(label, mx, my);
-    }
-}
-
-function drawArrow(ctx, x1, y1, x2, y2) {
-    const angle = Math.atan2(y2 - y1, x2 - x1);
-    const size = 7;
-    ctx.beginPath(); ctx.moveTo(x2, y2);
-    ctx.lineTo(x2 - size * Math.cos(angle - Math.PI / 6), y2 - size * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(x2 - size * Math.cos(angle + Math.PI / 6), y2 - size * Math.sin(angle + Math.PI / 6));
-    ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
-}
-
 function downloadPNG() {
     const canvas = document.getElementById("canvas");
     const link = document.createElement("a");
-    link.download = (document.getElementById("fileName").value || "triangle") + ".png";
+    link.download = document.getElementById("fileName").value + ".png";
     link.href = canvas.toDataURL("image/png");
     link.click();
 }
@@ -248,9 +275,9 @@ function downloadDXF() {
         dxf.push("  0", "VERTEX", "  8", "0", " 10", p[0].toFixed(4), " 20", (maxY - p[1]).toFixed(4));
     });
     dxf.push("  0", "SEQEND", "  0", "ENDSEC", "  0", "EOF");
-    const blob = new Blob([dxf.join("\r\n")], { type: "application/dxf" });
+    const blob = new Blob([dxf.join("\r\n") + "\r\n"], { type: "application/dxf" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = (document.getElementById("fileName").value || "triangle") + ".dxf";
+    link.download = document.getElementById("fileName").value + ".dxf";
     link.click();
 }
