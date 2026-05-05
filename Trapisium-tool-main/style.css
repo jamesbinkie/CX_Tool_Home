@@ -1,0 +1,147 @@
+/* ---------- GLOBAL ---------- */
+body {
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: #2b2d31;
+  color: #f2f3f5;
+  margin: 0;
+  padding: 20px;
+}
+
+/* Panels */
+.controls,
+.edge-controls,
+.file-controls {
+  background: #313338;
+  padding: 15px 20px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+
+/* ---------- CONTROLS LAYOUT ---------- */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 25px 35px;
+}
+
+.controls label,
+.file-controls label {
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+  color: #e3e5e8;
+  min-width: 160px;
+  margin: 0;
+}
+
+/* D Offset — hidden by default, styled like others when shown */
+#Dlabel {
+  display: none;
+  flex-direction: column;
+  min-width: 160px;
+  margin: 0;
+}
+
+/* Inputs & selects */
+.controls input,
+.file-controls input,
+.controls select {
+  padding: 6px 10px;
+  font-size: 15px;
+  border-radius: 6px;
+  border: 1px solid #1e1f22;
+  background: #1e1f22;
+  color: #f2f3f5;
+  margin-top: 4px;
+  width: 120px;
+}
+
+.controls input:focus,
+.controls select:focus {
+  outline: none;
+  border-color: #5865F2;
+  box-shadow: 0 0 0 2px rgba(88,101,242,0.4);
+}
+
+.range {
+  font-size: 12px;
+  color: #b5bac1;
+  margin-top: 3px;
+}
+
+/* ---------- FILE CONTROLS LAYOUT (NEW) ---------- */
+
+.file-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 25px;
+}
+
+.file-controls label {
+  flex-direction: column;
+  min-width: 200px;
+}
+
+.file-controls button {
+  margin-top: 0;
+}
+
+/* ---------- CHECKBOXES ---------- */
+
+.edge-controls label {
+  margin-right: 20px;
+  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.edge-controls input[type="checkbox"] {
+  margin-right: 8px;
+  transform: scale(1.2);
+}
+
+/* ---------- BUTTONS ---------- */
+
+button {
+  padding: 10px 18px;
+  margin-right: 10px;
+  font-size: 15px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: #009fe3;
+  color: #fff;
+  font-weight: 600;
+  transition: background 0.15s ease;
+}
+
+button:hover {
+  background: #007fb5;
+}
+
+/* ---------- CANVAS ---------- */
+
+canvas {
+  display: block;
+  margin: 0 auto;
+  border: 1px solid #000;
+  background: #dfe8f2; /* soft blue-cream tone */
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+/* ---------- VERSION LABEL ---------- */
+
+#versionLabel {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  font-size: 14px;
+  color: #b5bac1;
+  opacity: 0.8;
+  user-select: none;
+}

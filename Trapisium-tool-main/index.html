@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Trapezium Generator</title>
+
+  <!-- CSS with cache-buster -->
+  <link rel="stylesheet" href="style.css?v=10007">
+
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>Trapezium Generator (mm)</h2>
+
+<div class="controls panel">
+
+  <!-- Type -->
+  <label>Type:
+    <select id="type">
+      <option value="regular">Regular</option>
+      <option value="right">Right</option>
+      <option value="irregular">Irregular</option>
+    </select>
+  </label>
+
+  <!-- A -->
+  <label>A (Height):
+    <input id="A" type="number" value="100" min="100" max="2440" onclick="this.select()">
+    <div class="range">Min 100 mm — Max 2440 mm</div>
+  </label>
+
+  <!-- B -->
+  <label>B (Bottom Width):
+    <input id="B" type="number" value="50" min="50" max="1220" onclick="this.select()">
+    <div class="range">Min 50 mm — Max 1220 mm</div>
+  </label>
+
+  <!-- C -->
+  <label>C (Top Width):
+    <input id="C" type="number" value="20" min="20" onclick="this.select()">
+    <div class="range">Min 20 mm — Max <span id="CmaxLabel">49</span> mm</div>
+  </label>
+
+  <!-- D -->
+  <label id="Dlabel">
+    D (Offset):
+    <input id="D" type="number" value="0" min="0" onclick="this.select()">
+    <div class="range">0 mm — Max <span id="DmaxLabel">0</span> mm</div>
+  </label>
+
+</div>
+
+<h3>Edge Banding</h3>
+<div class="edge-controls panel">
+  <label><input type="checkbox" id="bandTop"> Top</label>
+  <label><input type="checkbox" id="bandRight"> Right</label>
+  <label><input type="checkbox" id="bandBottom"> Bottom</label>
+  <label><input type="checkbox" id="bandLeft"> Left</label>
+</div>
+
+<h3>Export</h3>
+<div class="file-controls panel">
+
+  <label>File Name:
+    <input id="fileName" type="text" value="trapezium">
+  </label>
+
+  <button onclick="downloadPNG()">Download PNG</button>
+  <button onclick="downloadDXF()">Download DXF</button>
+
+</div>
+
+<canvas id="canvas" width="900" height="600"></canvas>
+
+</div>
+
+<div id="versionLabel">v1.5.2</div>
+
+<script src="script.js"></script>
+
+<script>
+
+/* Hide D on load */
+document.getElementById("Dlabel").style.display = "none";
+
+/* Type change */
+document.getElementById("type").addEventListener("change", function () {
+
+  const type = this.value;
+  const Dlabel = document.getElementById("Dlabel");
+
+  if (type === "irregular") {
+    Dlabel.style.display = "flex";
+  } else {
+    Dlabel.style.display = "none";
+  }
+
+  drawTrapezium();
+});
+
+
+/* redraw when banding toggled */
+document
+  .querySelectorAll("#bandTop, #bandRight, #bandBottom, #bandLeft")
+  .forEach(cb => {
+    cb.addEventListener("change", function () {
+      drawTrapezium();
+    });
+  });
+
+</script>
+
+</body>
+</html>
