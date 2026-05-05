@@ -30,7 +30,8 @@ function updateUI() {
 
 /**
  * Manufacturing Logic:
- * Both W and H can be up to 2400, but if one > 1200, the other is capped at 1200.
+ * Both W and H can reach 2400mm, but as soon as one exceeds 1200mm, 
+ * the other is automatically capped at 1200mm.
  */
 function validateAndClamp() {
     const type = document.getElementById("type").value;
@@ -46,37 +47,36 @@ function validateAndClamp() {
         let w = parseFloat(wIn.value) || minVal;
         let h = parseFloat(hIn.value) || minVal;
 
-        // 1. Primary Sheet Limit (Either can be 2400, but only one)
+        // 1. Primary Sheet Limit (Either can reach 2400, but only one at a time)
         w = Math.max(minVal, Math.min(w, maxSheetDim));
         h = Math.max(minVal, Math.min(h, maxSheetDim));
 
         if (w > midSheetDim) h = Math.min(h, midSheetDim);
-        if (h > midSheetDim) w = Math.min(w, midSheetDim);
+        else if (h > midSheetDim) w = Math.min(w, midSheetDim);
 
         // 2. Angle Rule (30 deg)
-        // If one is so large the other can't reach 30 deg without hitting a sheet edge, prioritize the sheet.
+        // If Height is too small for Width...
         if (h < w * minRatio) {
             h = Math.ceil(w * minRatio);
-            if (h > midSheetDim && w > midSheetDim) { 
-                // Conflict: Force W down to accommodate H=1200 at 30 deg
+            // If required height exceeds sheet limits, reduce width instead
+            if (h > midSheetDim && w > midSheetDim) {
                 h = midSheetDim;
                 w = Math.floor(h / minRatio);
-            } else if (h > maxSheetDim) {
-                h = maxSheetDim;
-                w = Math.floor(h / minRatio); // Technically width would be huge here
             }
         }
         
+        // If Width is too small for Height...
         if (w < h * minRatio) {
             w = Math.ceil(h * minRatio);
+            // If required width exceeds sheet limits, reduce height instead
             if (w > midSheetDim && h > midSheetDim) {
                 w = midSheetDim;
                 h = Math.floor(w / minRatio);
             }
         }
 
-        wIn.value = w;
-        hIn.value = h;
+        wIn.value = Math.round(w);
+        hIn.value = Math.round(h);
     } else {
         const aIn = document.getElementById("sideA");
         const bIn = document.getElementById("sideB");
@@ -90,8 +90,7 @@ function validateAndClamp() {
         c = Math.max(minVal, Math.min(c, maxSheetDim));
 
         if (a + b <= c) {
-            const needed = c + 10;
-            const f = needed / (a + b);
+            const f = (c + 10) / (a + b);
             a = Math.round(a * f);
             b = Math.round(b * f);
         }
@@ -107,7 +106,7 @@ function refreshHintsAndWarnings() {
     const w = Math.max(...xs) - Math.min(...xs);
     const h = Math.max(...ys) - Math.min(...ys);
 
-    // Dynamic Labels for Max Values
+    // Dynamic Labels for Max Values based on current input
     const wInVal = parseFloat(document.getElementById("W").value);
     const hInVal = parseFloat(document.getElementById("H").value);
     
@@ -120,6 +119,7 @@ function refreshHintsAndWarnings() {
     const tooBig = (Math.max(w, h) > 2400 || Math.min(w, h) > 1200);
     document.getElementById("sheetWarning").style.display = tooBig ? "block" : "none";
 
+    // Angle Warning
     const angles = calculateAngles(pts);
     const isBanding = document.getElementById("bandBottom").checked || 
                      document.getElementById("bandRight").checked || 
@@ -128,7 +128,7 @@ function refreshHintsAndWarnings() {
 }
 
 // -------------------------------
-// GEOMETRY & RENDERING
+// GEOMETRY & RENDERING (Same as previous)
 // -------------------------------
 function getPoints() {
     const type = document.getElementById("type").value;
