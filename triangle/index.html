@@ -5,19 +5,17 @@
   <title>Triangle Generator</title>
   <link rel="stylesheet" href="../style.css">
   <style>
-    /* New Warning Box Styling */
     .warning-box {
       display: none;
-      background: #313338; /* Matches panel background */
+      background: #313338;
       color: #f2f3f5;
       padding: 15px;
       border-radius: 10px;
       margin-bottom: 20px;
       font-weight: 600;
-      border: 4px solid #f39c12; /* Thick orange outline */
+      border: 4px solid #f39c12;
       box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
-    
     #abc-controls, #wh-controls { display: none; }
     .range { font-size: 11px; color: #009fe3; margin-top: 4px; }
   </style>
@@ -56,7 +54,7 @@
         </label>
         <label>Height (H):
             <input id="H" type="number" value="500" onclick="this.select()">
-            <div class="range" id="rangeH">Min 200 mm — Max 1200 mm</div>
+            <div class="range" id="rangeH">Min 200 mm — Max 2400 mm</div>
         </label>
     </div>
 
@@ -69,15 +67,15 @@
     <div id="abc-controls" style="display: none; gap: 20px;">
         <label>Side A (Left): 
             <input id="sideA" type="number" value="500" onclick="this.select()">
-            <div class="range">Min 200 mm</div>
+            <div class="range" id="rangeA">Min 200 mm</div>
         </label>
         <label>Side B (Right): 
             <input id="sideB" type="number" value="500" onclick="this.select()">
-            <div class="range">Min 200 mm</div>
+            <div class="range" id="rangeB">Min 200 mm</div>
         </label>
         <label>Side C (Bottom): 
             <input id="sideC" type="number" value="600" onclick="this.select()">
-            <div class="range">Max 2400 mm</div>
+            <div class="range" id="rangeC">Max 2400 mm</div>
         </label>
     </div>
   </div>
@@ -101,7 +99,7 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v2.4.2</div>
+<div id="versionLabel">v2.5.0</div>
 
 <script src="script.js"></script>
 
