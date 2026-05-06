@@ -12,7 +12,7 @@
   <button onclick="window.location.href='../index.html'" style="background: #4f545c;">← Back to Home</button>
 </div>
 
-<div class="container">
+<div class="landing-container" style="text-align: left; padding: 0;">
   <h2>Trapezium Generator (mm)</h2>
 
   <div class="controls panel">
@@ -25,18 +25,18 @@
     </label>
 
     <label>A (Height):
-      <input id="A" type="number" value="100" min="100" max="2440" onclick="this.select()">
+      <input id="A" type="number" value="500" min="100" max="2440" onclick="this.select()">
       <div class="range">Min 100 mm — Max 2440 mm</div>
     </label>
 
     <label>B (Bottom Width):
-      <input id="B" type="number" value="50" min="50" max="1220" onclick="this.select()">
-      <div class="range">Min 50 mm — Max 1220 mm</div>
+      <input id="B" type="number" value="500" min="50" max="2440" onclick="this.select()">
+      <div class="range">Min 50 mm — Max 2440 mm</div>
     </label>
 
     <label>C (Top Width):
-      <input id="C" type="number" value="20" min="20" onclick="this.select()">
-      <div class="range">Min 20 mm — Max <span id="CmaxLabel">49</span> mm</div>
+      <input id="C" type="number" value="200" min="20" onclick="this.select()">
+      <div class="range">Min 20 mm — Max <span id="CmaxLabel">499</span> mm</div>
     </label>
 
     <label id="Dlabel">D (Offset):
@@ -65,7 +65,7 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v1.5.2</div>
+<div id="versionLabel">v2.6.2</div>
 
 <script src="script.js"></script>
 
