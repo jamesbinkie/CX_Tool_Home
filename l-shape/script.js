@@ -80,7 +80,8 @@ function validateAndClamp() {
 function refreshHintsAndWarnings() {
     const A = parseFloat(document.getElementById("totalW").value) || 200;
     const B = parseFloat(document.getElementById("totalH").value) || 200;
-    document.getElementById("sheetWarning").style.display = (Math.max(A, B) > 2400 || Math.min(A, B) > 1200) ? "block" : "none";
+    const tooBig = (Math.max(A, B) > 2400 || Math.min(A, B) > 1200);
+    document.getElementById("sheetWarning").style.display = tooBig ? "block" : "none";
 
     if (document.getElementById("rangeA")) {
         document.getElementById("rangeA").textContent = `Min 200 — Max ${B > 1200 ? 1200 : 2400} mm`;
@@ -108,47 +109,68 @@ function drawLShape(targetCtx = null) {
 
     const corners = pts.map((p, i) => ({ p, r: (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale }));
 
-    const drawPath = (cArray, ctxObj, offset = 0) => {
-        const dx = cArray[1].p[0]-cArray[0].p[0], dy = cArray[1].p[1]-cArray[0].p[1], l = Math.hypot(dx, dy) || 1;
-        // Tangent start point to avoid "hook" glitch
-        ctxObj.moveTo((cArray[0].p[0] + (dx/l)*(cArray[0].r/scale))*scale+offX, (th-(cArray[0].p[1] + (dy/l)*(cArray[0].r/scale)))*scale+offY);
-        for (let i = 0; i < 6; i++) {
-            const next = cArray[(i + 1) % 6], nn = cArray[(i + 2) % 6];
-            ctxObj.arcTo(next.p[0]*scale+offX, (th-next.p[1])*scale+offY, nn.p[0]*scale+offX, (th-nn.p[1])*scale+offY, next.r);
-        }
+    // Define banding segments mapping
+    const segCheck = {
+        0: document.getElementById("bandA").checked,
+        1: document.getElementById("bandD").checked,
+        2: document.getElementById("bandInternal").checked,
+        3: document.getElementById("bandInternal").checked,
+        4: document.getElementById("bandC").checked,
+        5: document.getElementById("bandB").checked
     };
 
-    // Outline
-    ctx.beginPath(); drawPath(corners, ctx); ctx.closePath();
-    ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
+    const isLeft = document.getElementById("type").value === "left";
 
-    // Red Curved Banding with Offset (10px)
-    const offsetPx = 10;
-    const bands = [
-        { id: "bandA", segs: [0] }, { id: "bandD", segs: [1] }, { id: "bandInternal", segs: [2, 3] },
-        { id: "bandC", segs: [4] }, { id: "bandB", segs: [5] }
-    ];
+    // 1. Draw Outline (Black)
+    ctx.beginPath();
+    const startPt = corners[0];
+    const dx0 = corners[1].p[0]-startPt.p[0], dy0 = corners[1].p[1]-startPt.p[1], l0 = Math.hypot(dx0, dy0) || 1;
+    ctx.moveTo((startPt.p[0] + (dx0/l0)*(startPt.r/scale))*scale+offX, (th-(startPt.p[1] + (dy0/l0)*(startPt.r/scale)))*scale+offY);
+    for (let i = 0; i < 6; i++) {
+        const next = corners[(i + 1) % 6], nn = corners[(i + 2) % 6];
+        ctx.arcTo(next.p[0]*scale+offX, (th-next.p[1])*scale+offY, nn.p[0]*scale+offX, (th-nn.p[1])*scale+offY, next.r);
+    }
+    ctx.closePath(); ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    bands.forEach(band => {
-        if (document.getElementById(band.id).checked) {
-            ctx.lineWidth = 4; ctx.strokeStyle = "red";
-            band.segs.forEach(sIdx => {
-                ctx.beginPath();
-                const c = corners[sIdx], n = corners[(sIdx+1)%6], nn = corners[(sIdx+2)%6], pP = corners[(sIdx+5)%6];
-                // Segment normal for translation offset
-                const dx = n.p[0]-c.p[0], dy = n.p[1]-c.p[1], l = Math.hypot(dx,dy) || 1;
-                let nx = dy/l, ny = -dx/l; // Outward normal for CCW
-                
-                // Helper to get offset coord
-                const oX = (x, rComp = 0) => (x + nx*offsetPx/scale + rComp)*scale + offX;
-                const oY = (y, rComp = 0) => (th - (y + ny*offsetPx/scale + rComp))*scale + offY;
+    // 2. Draw Banding (Red Offset)
+    const gap = 12; // Visual offset gap
+    ctx.strokeStyle = "red"; ctx.lineWidth = 3;
+    for (let i = 0; i < 6; i++) {
+        if (!segCheck[i]) continue;
+        
+        const c = corners[i], n = corners[(i + 1) % 6], nn = corners[(i + 2) % 6], pPrev = corners[(i + 5) % 6];
+        
+        // Calculate outward normal for current segment
+        const dx = n.p[0]-c.p[0], dy = n.p[1]-c.p[1], l = Math.hypot(dx,dy) || 1;
+        // In CCW Right-L: Bottom(0-1) normal is [0, -1]
+        let nx = dy/l, ny = -dx/l; 
+        
+        const shiftX = nx * gap, shiftY = ny * gap;
 
-                ctx.moveTo(oX(c.p[0] + (dx/l)*(c.r/scale)), oY(c.p[1] + (dy/l)*(c.r/scale)));
-                ctx.arcTo(oX(n.p[0]), oY(n.p[1]), oX(nn.p[0]), oY(nn.p[1]), n.r);
-                ctx.stroke();
-            });
+        // Draw the segment line
+        ctx.beginPath();
+        // Extend slightly to meet arcs
+        const startX = (c.p[0] + (dx/l)*(c.r/scale))*scale + offX + shiftX;
+        const startY = (th - (c.p[1] + (dy/l)*(c.r/scale)))*scale + offY - shiftY;
+        const endX = (n.p[0] - (dx/l)*(n.r/scale))*scale + offX + shiftX;
+        const endY = (th - (n.p[1] - (dy/l)*(n.r/scale)))*scale + offY - shiftY;
+        
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+
+        // Join corner arc if next segment is also checked
+        if (segCheck[(i + 1) % 6]) {
+            const nextDx = nn.p[0]-n.p[0], nextDy = nn.p[1]-n.p[1], nextL = Math.hypot(nextDx, nextDy) || 1;
+            const nx2 = nextDy/nextL, ny2 = -nextDx/nextL;
+            
+            ctx.beginPath();
+            ctx.moveTo(endX, endY);
+            // arcTo automatically creates the curve join for the offset path
+            ctx.arcTo(n.p[0]*scale+offX+shiftX, (th-n.p[1])*scale+offY-shiftY, n.p[0]*scale+offX+nx2*gap, (th-n.p[1])*scale+offY-ny2*gap, n.r + (i === 2 ? -gap : gap));
+            ctx.stroke();
         }
-    });
+    }
 
     if (highlightedCorner !== -1 && !targetCtx) {
         const c = corners[highlightedCorner], pP = corners[(highlightedCorner + 5) % 6].p, pN = corners[(highlightedCorner + 1) % 6].p;
@@ -162,7 +184,7 @@ function drawLShape(targetCtx = null) {
 }
 
 function drawLDimensions(ctx, pts, scale, offX, offY, th) {
-    // FIX: Set big, bold font for labels A, B, C, D
+    // FIX: Restored Big Bold A, B, C, D labels
     ctx.font = "bold 18px Segoe UI, Arial"; ctx.fillStyle = "#000"; ctx.textAlign = "center";
     const A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value), C = parseFloat(document.getElementById("legW").value), D = parseFloat(document.getElementById("legH").value);
     const isLeft = document.getElementById("type").value === "left";
@@ -179,12 +201,17 @@ function drawLDimensions(ctx, pts, scale, offX, offY, th) {
         ctx.fillText(label, mx, my + 6);
     };
 
+    // A (Bottom)
     drawDim(offX, offY + th*scale + 55, offX + A*scale, offY + th*scale + 55, `A: ${A}mm`);
-    const bX = isLeft ? offX + A*scale + 75 : offX - 75;
+    // B (Left Total)
+    const bX = isLeft ? offX + A*scale + 85 : offX - 85;
     drawDim(bX, offY + th*scale, bX, offY, `B: ${B}mm`);
-    const cX = isLeft ? offX + A*scale : offX, cX2 = isLeft ? offX + A*scale - C*scale : offX + C*scale;
+    // C (Top Leg Width)
+    const cX = isLeft ? offX + A*scale : offX;
+    const cX2 = isLeft ? offX + A*scale - C*scale : offX + C*scale;
     drawDim(cX, offY - 35, cX2, offY - 35, `C: ${C}mm`);
-    const dX = isLeft ? offX - 75 : offX + A*scale + 75;
+    // D (Outer Leg Height)
+    const dX = isLeft ? offX - 85 : offX + A*scale + 85;
     drawDim(dX, offY + th*scale, dX, offY + th*scale - D*scale, `D: ${D}mm`);
 }
 
