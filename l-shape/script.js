@@ -38,20 +38,17 @@ function validateAndClamp() {
     let lw = parseFloat(lwIn.value) || minVal;
     let lh = parseFloat(lhIn.value) || minVal;
 
-    // 1. Sheet Size Logic
     tw = Math.max(minVal, Math.min(tw, sheetW));
     th = Math.max(minVal, Math.min(th, sheetW));
     if (tw > sheetH) th = Math.min(th, sheetH);
     else if (th > sheetH) tw = Math.min(tw, sheetH);
 
-    // 2. Leg Constraints
     lw = Math.max(minVal, Math.min(lw, tw - 50));
     lh = Math.max(minVal, Math.min(lh, th - 50));
 
     twIn.value = Math.round(tw); thIn.value = Math.round(th);
     lwIn.value = Math.round(lw); lhIn.value = Math.round(lh);
 
-    // 3. Radius Safety Guard (Prevents intersection/hook bug)
     const sideLengths = [tw, lh, (tw - lw), (th - lh), lw, th];
     let conflict = false;
     
@@ -70,7 +67,6 @@ function validateAndClamp() {
         }
     }
     
-    // Internal Corner 4 Min 50mm
     const r3 = document.getElementById("rad3");
     if (parseFloat(r3.value) < 50) r3.value = 50;
 
@@ -81,9 +77,7 @@ function validateAndClamp() {
 function refreshHintsAndWarnings() {
     const A = parseFloat(document.getElementById("totalW").value) || 200;
     const B = parseFloat(document.getElementById("totalH").value) || 200;
-    
-    const tooBig = (Math.max(A, B) > 2400 || Math.min(A, B) > 1200);
-    document.getElementById("sheetWarning").style.display = tooBig ? "block" : "none";
+    document.getElementById("sheetWarning").style.display = (Math.max(A, B) > 2400 || Math.min(A, B) > 1200) ? "block" : "none";
 
     if (document.getElementById("rangeA")) {
         document.getElementById("rangeA").textContent = `Min 200 — Max ${B > 1200 ? 1200 : 2400} mm`;
@@ -105,75 +99,83 @@ function getPoints() {
 }
 
 function drawLShape(targetCtx = null) {
-    const canvas = document.getElementById("canvas");
-    const ctx = targetCtx || canvas.getContext("2d");
+    const canvas = document.getElementById("canvas"), ctx = targetCtx || canvas.getContext("2d");
     if (!targetCtx) ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const pts = getPoints();
-    const tw = parseFloat(document.getElementById("totalW").value) || 1000;
-    const th = parseFloat(document.getElementById("totalH").value) || 800;
+    const pts = getPoints(), tw = parseFloat(document.getElementById("totalW").value) || 1000, th = parseFloat(document.getElementById("totalH").value) || 800;
     const margin = 140, scale = Math.min((canvas.width - margin * 2) / tw, (canvas.height - margin * 2) / th);
     const offX = (canvas.width - tw * scale) / 2, offY = (canvas.height - th * scale) / 2;
 
-    const corners = pts.map((p, i) => {
-        let r = parseFloat(document.getElementById(`rad${i}`).value) || 0;
-        return { p: p, r: r * scale };
-    });
+    const corners = pts.map((p, i) => ({ p, r: (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale }));
 
-    // FIX THE HOOK: Calculate exact tangent start point for Corner 0
-    ctx.beginPath(); 
-    const pPrev = corners[5].p, pCurr = corners[0].p, pNext = corners[1].p;
-    const dx = pNext[0] - pCurr[0], dy = pNext[1] - pCurr[1];
-    const len = Math.hypot(dx, dy) || 1;
-    const moveX = (pCurr[0] + (dx/len) * (corners[0].r/scale)) * scale + offX;
-    const moveY = (th - (pCurr[1] + (dy/len) * (corners[0].r/scale))) * scale + offY;
-    
-    ctx.moveTo(moveX, moveY);
+    const drawPath = (cArray, ctxObj, isOutline) => {
+        const pPrev = cArray[5].p, pCurr = cArray[0].p, pNext = cArray[1].p;
+        const dx = pNext[0] - pCurr[0], dy = pNext[1] - pCurr[1], len = Math.hypot(dx, dy) || 1;
+        ctxObj.moveTo((pCurr[0] + (dx/len) * (cArray[0].r/scale)) * scale + offX, (th - (pCurr[1] + (dy/len) * (cArray[0].r/scale))) * scale + offY);
+        for (let i = 0; i < 6; i++) {
+            const n = cArray[(i + 1) % 6], nn = cArray[(i + 2) % 6];
+            ctxObj.arcTo(n.p[0]*scale+offX, (th-n.p[1])*scale+offY, nn.p[0]*scale+offX, (th-nn.p[1])*scale+offY, n.r);
+        }
+    };
 
-    for (let i = 0; i < 6; i++) {
-        const next = corners[(i + 1) % 6], nNext = corners[(i + 2) % 6];
-        const x1 = next.p[0] * scale + offX, y1 = (th - next.p[1]) * scale + offY;
-        const x2 = nNext.p[0] * scale + offX, y2 = (th - nNext.p[1]) * scale + offY;
-        ctx.arcTo(x1, y1, x2, y2, next.r);
-    }
-    ctx.closePath(); 
+    // Outline
+    ctx.beginPath(); drawPath(corners, ctx, true); ctx.closePath();
     ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // Red Edge Banding (Corrected Mapping)
-    const ids = ["bandA", "bandD", "bandInnerH", "bandInnerV", "bandC", "bandB"];
-    ctx.lineWidth = 3; ctx.strokeStyle = "red";
-    ids.forEach((id, i) => {
+    // Curved Banding
+    const bands = ["bandA", "bandD", "bandInnerH", "bandInnerV", "bandC", "bandB"];
+    ctx.lineWidth = 4; ctx.strokeStyle = "red";
+    bands.forEach((id, i) => {
         if (document.getElementById(id).checked) {
-            const p1 = corners[i], p2 = corners[(i + 1) % 6];
             ctx.beginPath();
-            ctx.moveTo(p1.p[0] * scale + offX, (th - p1.p[1]) * scale + offY);
-            ctx.lineTo(p2.p[0] * scale + offX, (th - p2.p[1]) * scale + offY);
+            const cPrev = corners[(i + 5) % 6], cCurr = corners[i], cNext = corners[(i + 1) % 6], cNN = corners[(i + 2) % 6];
+            // Start banding mid-arc of previous corner to end-arc of current
+            const dx = cNext.p[0]-cCurr.p[0], dy = cNext.p[1]-cCurr.p[1], l = Math.hypot(dx,dy) || 1;
+            ctx.moveTo((cCurr.p[0] + (dx/l)*(cCurr.r/scale))*scale+offX, (th-(cCurr.p[1] + (dy/l)*(cCurr.r/scale)))*scale+offY);
+            ctx.arcTo(cNext.p[0]*scale+offX, (th-cNext.p[1])*scale+offY, cNN.p[0]*scale+offX, (th-cNN.p[1])*scale+offY, cNext.r);
             ctx.stroke();
         }
     });
 
-    // Centered Corner Highlighter
     if (highlightedCorner !== -1 && !targetCtx) {
         const c = corners[highlightedCorner], pP = corners[(highlightedCorner + 5) % 6].p, pN = corners[(highlightedCorner + 1) % 6].p;
         const v1 = { x: pP[0]-c.p[0], y: pP[1]-c.p[1] }, v2 = { x: pN[0]-c.p[0], y: pN[1]-c.p[1] };
         const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
         const bisect = { x: (v1.x/mag1 + v2.x/mag2), y: (v1.y/mag1 + v2.y/mag2) }, bMag = Math.hypot(bisect.x, bisect.y);
-        const hX = (c.p[0] * scale + offX) + (bisect.x / (bMag || 1)) * (c.r * 0.414);
-        const hY = ((th - c.p[1]) * scale + offY) - (bisect.y / (bMag || 1)) * (c.r * 0.414);
+        const hX = (c.p[0] * scale + offX) + (bisect.x / (bMag || 1)) * (c.r * 0.414), hY = ((th - c.p[1]) * scale + offY) - (bisect.y / (bMag || 1)) * (c.r * 0.414);
         ctx.beginPath(); ctx.arc(hX, hY, 25, 0, Math.PI * 2); ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 3; ctx.stroke();
     }
-    
-    if (!targetCtx) drawDimensions(ctx, pts, scale, offX, offY, th);
+    if (!targetCtx) drawLDimensions(ctx, pts, scale, offX, offY, th);
 }
 
-function drawDimensions(ctx, pts, scale, offX, offY, th) {
+function drawLDimensions(ctx, pts, scale, offX, offY, th) {
     ctx.font = "bold 15px Arial"; ctx.fillStyle = "#000"; ctx.textAlign = "center";
-    const A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value);
-    const C = parseFloat(document.getElementById("legW").value), D = parseFloat(document.getElementById("legH").value);
-    ctx.fillText(`A: ${A}mm`, offX + (A * scale) / 2, offY + (th * scale) + 45);
-    ctx.save(); ctx.translate(offX - 60, offY + (th * scale) / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(`B: ${B}mm`, 0, 0); ctx.restore();
-    ctx.fillText(`C: ${C}mm`, offX + (C * scale) / 2, offY - 25);
-    ctx.save(); ctx.translate(offX + (A * scale) + 60, offY + (th * scale) - (D * scale) / 2); ctx.rotate(Math.PI / 2); ctx.fillText(`D: ${D}mm`, 0, 0); ctx.restore();
+    const A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value), C = parseFloat(document.getElementById("legW").value), D = parseFloat(document.getElementById("legH").value);
+    const isLeft = document.getElementById("type").value === "left";
+
+    // Helper from Triangle tool
+    const drawDim = (x1, y1, x2, y2, label) => {
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        const textWidth = ctx.measureText(label).width + 15, mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(mx - Math.cos(angle)*(textWidth/2), my - Math.sin(angle)*(textWidth/2));
+        ctx.moveTo(mx + Math.cos(angle)*(textWidth/2), my + Math.sin(angle)*(textWidth/2)); ctx.lineTo(x2, y2);
+        ctx.strokeStyle = "#444"; ctx.lineWidth = 1.2; ctx.stroke();
+        const s = 8; ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - s*Math.cos(angle-Math.PI/6), y2 - s*Math.sin(angle-Math.PI/6)); ctx.lineTo(x2 - s*Math.cos(angle+Math.PI/6), y2 - s*Math.sin(angle+Math.PI/6)); ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
+        ctx.fillText(label, mx, my + 4);
+    };
+
+    // A (Bottom)
+    drawDim(offX, offY + th*scale + 45, offX + A*scale, offY + th*scale + 45, `${A}mm`);
+    // B (Left Total)
+    const bX = isLeft ? offX + A*scale + 65 : offX - 65;
+    drawDim(bX, offY + th*scale, bX, offY, `${B}mm`);
+    // C (Top Leg Width)
+    const cX = isLeft ? offX + A*scale : offX;
+    const cX2 = isLeft ? offX + A*scale - C*scale : offX + C*scale;
+    drawDim(cX, offY - 25, cX2, offY - 25, `${C}mm`);
+    // D (Outer Leg Height)
+    const dX = isLeft ? offX - 65 : offX + A*scale + 65;
+    drawDim(dX, offY + th*scale, dX, offY + th*scale - D*scale, `${D}mm`);
 }
 
 function downloadPNG() {
