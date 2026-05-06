@@ -20,7 +20,6 @@
 
     .corner-grid {
       display: grid;
-      /* Spacing synchronized with main controls: 40px horizontal gap */
       grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
       gap: 25px 40px; 
       margin-top: 15px;
@@ -129,8 +128,7 @@
   <div class="edge-controls panel">
     <label><input type="checkbox" id="bandA"> Bottom (A)</label>
     <label><input type="checkbox" id="bandD"> Outer Leg (D)</label>
-    <label><input type="checkbox" id="bandInnerH"> Inner Horiz</label>
-    <label><input type="checkbox" id="bandInnerV"> Inner Vert</label>
+    <label><input type="checkbox" id="bandInternal"> Internal</label>
     <label><input type="checkbox" id="bandC"> Top (C)</label>
     <label><input type="checkbox" id="bandB"> Left (B)</label>
   </div>
@@ -145,7 +143,7 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v2.8.0</div>
+<div id="versionLabel">v2.8.1</div>
 
 <script src="script.js"></script>
 </body>
