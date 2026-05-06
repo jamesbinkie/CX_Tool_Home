@@ -20,33 +20,32 @@
 
     .corner-grid {
       display: grid;
+      /* FIX: Increased width of input fields and set 40px horizontal gap to prevent box overlap */
       grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
       gap: 25px 40px; 
       margin-top: 15px;
     }
     
-    .corner-input-wrap { display: flex; flex-direction: column; }
+    .corner-input-wrap {
+      display: flex;
+      flex-direction: column;
+      transition: all 0.2s;
+    }
     .corner-input-wrap label { 
       font-size: 13px; 
       color: #b5bac1; 
-      margin-bottom: 5px;
+      margin-bottom: 2px;
+      margin-left: 5px;
       font-weight: bold;
-      min-width: auto;
     }
-
     .corner-input-wrap input { 
       width: 100%; 
       font-size: 15px;
       font-weight: 600;
-      background: #1e1f22;
-      border: 1px solid #1e1f22;
-      color: #f2f3f5;
-      border-radius: 6px;
-      padding: 8px 12px;
     }
-    .corner-input-wrap input:focus { border-color: #009fe3; outline: none; }
     .range { font-size: 11px; color: #009fe3; margin-top: 4px; font-weight: normal; }
     
+    /* Highlight style for the Internal Corner */
     .inner-corner-box input { border-color: #009fe3 !important; box-shadow: 0 0 8px rgba(0,159,227,0.3); }
     .inner-corner-box label { color: #009fe3; }
   </style>
@@ -62,11 +61,11 @@
   <h2>L-Shape Generator (mm)</h2>
 
   <div id="sheetWarning" class="warning-box">
-    ⚠️ Part exceeds maximum sheet size (2400 x 1200 mm). Values have been adjusted to fit.
+    ⚠️ Part exceeds maximum sheet size (2400 x 1200 mm). Values have been adjusted.
   </div>
 
   <div id="radiusWarning" class="warning-box">
-    ⚠️ Radii are too large! They have been capped to fit the side length.
+    ⚠️ Radii are too large! They have been capped to prevent overlapping and geometry glitches.
   </div>
 
   <div class="controls panel">
@@ -100,46 +99,41 @@
     <p style="font-size: 12px; color: #b5bac1; margin-bottom: 10px;">Internal corner is blue. Hover to identify on diagram.</p>
     <div class="corner-grid">
         <div class="corner-input-wrap inner-corner-box" data-corner="3">
-            <label>Corner 4 (Internal)
-                <input type="number" id="rad3" value="50">
-            </label>
+            <label for="rad3">Corner 4 (Internal)</label>
+            <input type="number" id="rad3" value="50" min="50">
             <div class="range">Min 50 mm</div>
         </div>
         <div class="corner-input-wrap" data-corner="0">
-            <label>Corner 1 (Bottom Left)
-                <input type="number" id="rad0" value="0">
-            </label>
+            <label for="rad0">Corner 1</label>
+            <input type="number" id="rad0" value="0">
         </div>
         <div class="corner-input-wrap" data-corner="1">
-            <label>Corner 2 (Bottom Right)
-                <input type="number" id="rad1" value="0">
-            </label>
+            <label for="rad1">Corner 2</label>
+            <input type="number" id="rad1" value="0">
         </div>
         <div class="corner-input-wrap" data-corner="2">
-            <label>Corner 3 (Right)
-                <input type="number" id="rad2" value="0">
-            </label>
+            <label for="rad2">Corner 3</label>
+            <input type="number" id="rad2" value="0">
         </div>
         <div class="corner-input-wrap" data-corner="4">
-            <label>Corner 5 (Top)
-                <input type="number" id="rad4" value="0">
-            </label>
+            <label for="rad4">Corner 5</label>
+            <input type="number" id="rad4" value="0">
         </div>
         <div class="corner-input-wrap" data-corner="5">
-            <label>Corner 6 (Top Left)
-                <input type="number" id="rad5" value="0">
-            </label>
+            <label for="rad5">Corner 6</label>
+            <input type="number" id="rad5" value="0">
         </div>
     </div>
   </div>
 
   <h3>Edge Banding</h3>
   <div class="edge-controls panel">
-    <label><input type="checkbox" id="bandBottom"> Bottom (A)</label>
-    <label><input type="checkbox" id="bandRight"> Right (D)</label>
-    <label><input type="checkbox" id="bandInternal"> Internal</label>
-    <label><input type="checkbox" id="bandTop"> Top (C)</label>
-    <label><input type="checkbox" id="bandLeft"> Left (B)</label>
+    <label><input type="checkbox" id="bandA"> Bottom (A)</label>
+    <label><input type="checkbox" id="bandD"> Outer Leg (D)</label>
+    <label><input type="checkbox" id="bandInnerH"> Inner Horiz</label>
+    <label><input type="checkbox" id="bandInnerV"> Inner Vert</label>
+    <label><input type="checkbox" id="bandC"> Top (C)</label>
+    <label><input type="checkbox" id="bandB"> Left (B)</label>
   </div>
 
   <h3>Export</h3>
@@ -152,7 +146,7 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v2.9.2</div>
+<div id="versionLabel">v2.8.7</div>
 
 <script src="script.js"></script>
 </body>
