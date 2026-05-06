@@ -2,7 +2,7 @@ let highlightedCorner = -1;
 
 window.onload = () => {
     const ids = ["type", "totalW", "totalH", "legW", "legH", "rad0", "rad1", "rad2", "rad3", "rad4", "rad5",
-                 "bandBottom", "bandRight", "bandInternal", "bandTop", "bandLeft"];
+                 "bandA", "bandB", "bandC", "bandD", "bandInternal"];
     
     ids.forEach(id => {
         const el = document.getElementById(id);
@@ -33,25 +33,28 @@ function validateAndClamp() {
     let tw = parseFloat(twIn.value) || minVal, th = parseFloat(thIn.value) || minVal;
     let lw = parseFloat(lwIn.value) || minVal, lh = parseFloat(lhIn.value) || minVal;
 
+    // Sheet Limit Logic
     tw = Math.max(minVal, Math.min(tw, sheetW));
     th = Math.max(minVal, Math.min(th, sheetW));
     if (tw > sheetH) th = Math.min(th, sheetH); else if (th > sheetH) tw = Math.min(tw, sheetH);
 
+    // Leg Logic
     lw = Math.max(minVal, Math.min(lw, tw - 50));
     lh = Math.max(minVal, Math.min(lh, th - 50));
 
     twIn.value = Math.round(tw); thIn.value = Math.round(th);
     lwIn.value = Math.round(lw); lhIn.value = Math.round(lh);
 
-    const sideLengths = [tw, lh, (tw - lw), (th - lh), lw, th];
+    // Radius Conflict Guard
+    const sides = [tw, lh, (tw - lw), (th - lh), lw, th];
     let conflict = false;
     for (let i = 0; i < 6; i++) {
         const r1In = document.getElementById(`rad${i}`), r2In = document.getElementById(`rad${(i + 1) % 6}`);
         let r1 = parseFloat(r1In.value) || 0, r2 = parseFloat(r2In.value) || 0;
-        if ((r1 + r2) > sideLengths[i]) {
+        if ((r1 + r2) > sides[i]) {
             conflict = true;
-            const f = sideLengths[i] / (r1 + r2 + 1);
-            r1In.value = Math.floor(r1 * f); r2In.value = Math.floor(r2 * f);
+            const factor = sides[i] / (r1 + r2 + 1);
+            r1In.value = Math.floor(r1 * factor); r2In.value = Math.floor(r2 * factor);
         }
     }
     if (parseFloat(document.getElementById("rad3").value) < 50) document.getElementById("rad3").value = 50;
@@ -85,67 +88,73 @@ function drawLShape(targetCtx = null) {
     const offX = (canvas.width - tw * scale) / 2, offY = (canvas.height - th * scale) / 2;
     const corners = pts.map((p, i) => ({ p, r: (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale }));
 
-    // Helper: Draw rounded shape
-    const trace = (cArr, ctxObj, offset = 0) => {
+    // Define banding logic segments
+    const segChecks = [
+        document.getElementById("bandA").checked,
+        document.getElementById("bandD").checked,
+        document.getElementById("bandInternal").checked,
+        document.getElementById("bandInternal").checked,
+        document.getElementById("bandC").checked,
+        document.getElementById("bandB").checked
+    ];
+
+    const tracePath = (cArr, offset = 0) => {
         const n = cArr.length;
+        const result = [];
         for (let i = 0; i < n; i++) {
             const curr = cArr[i], next = cArr[(i + 1) % n], nn = cArr[(i + 2) % n];
             const dx = next.p[0] - curr.p[0], dy = next.p[1] - curr.p[1], l = Math.hypot(dx, dy) || 1;
+            // Outward normal
             const nx = dy / l * offset, ny = -dx / l * offset;
             
-            const x1 = (curr.p[0] + (dx/l)*(curr.r/scale)) * scale + offX + nx;
-            const y1 = (th - (curr.p[1] + (dy/l)*(curr.r/scale))) * scale + offY - ny;
+            // Adjust radius for offset: convex corners grow, concave corner (i=2) shrinks
+            const effectiveR = next.r + (i === 2 ? -offset : offset);
             
-            if (i === 0) ctxObj.moveTo(x1, y1); else ctxObj.lineTo(x1, y1);
-
-            const arcX = next.p[0]*scale + offX + nx, arcY = (th - next.p[1])*scale + offY - ny;
-            // Arc logic handles joining segments
-            ctxObj.arcTo(arcX, arcY, nn.p[0]*scale + offX, (th - nn.p[1])*scale + offY, next.r + (i === 2 ? -offset : offset));
-        }
-    };
-
-    // 1. Black Outline
-    ctx.beginPath(); trace(corners, ctx, 0); ctx.closePath();
-    ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
-
-    // 2. Red Banding (12px gap)
-    const gap = 12;
-    const bandMap = { bandBottom: [0], bandRight: [1], bandInternal: [2, 3], bandTop: [4], bandLeft: [5] };
-    ctx.lineWidth = 4; ctx.strokeStyle = "red";
-
-    Object.keys(bandMap).forEach(key => {
-        if (document.getElementById(key).checked) {
-            bandMap[key].forEach(idx => {
-                ctx.beginPath();
-                const c = corners[idx], n = corners[(idx + 1) % 6], nn = corners[(idx + 2) % 6];
-                const dx = n.p[0] - c.p[0], dy = n.p[1] - c.p[1], l = Math.hypot(dx, dy) || 1;
-                const nx = (dy/l)*gap, ny = (-dx/l)*gap;
-
-                const xS = (c.p[0] + (dx/l)*(c.r/scale)) * scale + offX + nx;
-                const yS = (th - (c.p[1] + (dy/l)*(c.r/scale))) * scale + offY - ny;
-                const xE = (n.p[0] - (dx/l)*(n.r/scale)) * scale + offX + nx;
-                const yE = (th - (n.p[1] - (dx/l)*(n.r/scale))) * scale + offY - ny;
-
-                ctx.moveTo(xS, yS); ctx.lineTo(xE, yE); ctx.stroke();
-
-                // Join Curve
-                const nextKey = Object.keys(bandMap).find(k => bandMap[k].includes((idx+1)%6));
-                if (document.getElementById(nextKey).checked) {
-                    ctx.beginPath(); ctx.moveTo(xE, yE);
-                    ctx.arcTo(n.p[0]*scale + offX + nx, (th - n.p[1])*scale + offY - ny, nn.p[0]*scale + offX, (th - nn.p[1])*scale + offY, n.r + (idx === 2 ? -gap : gap));
-                    ctx.stroke();
-                }
+            result.push({ 
+                x1: (curr.p[0] + (dx/l)*(curr.r/scale)) * scale + offX + nx,
+                y1: (th - (curr.p[1] + (dy/l)*(curr.r/scale))) * scale + offY - ny,
+                x2: (next.p[0] - (dx/l)*(next.r/scale)) * scale + offX + nx,
+                y2: (th - (next.p[1] - (dy/l)*(next.r/scale))) * scale + offY - ny,
+                arcX: next.p[0]*scale + offX + nx,
+                arcY: (th - next.p[1])*scale + offY - ny,
+                targetX: (next.p[0] + ((nn.p[0]-next.p[0])/Math.hypot(nn.p[0]-next.p[0], nn.p[1]-next.p[1]) || 0)*(nn.r/scale))*scale + offX,
+                r: Math.max(0, effectiveR)
             });
         }
+        return result;
+    };
+
+    const outline = tracePath(corners, 0);
+    const banding = tracePath(corners, 12);
+
+    // 1. Draw Outline
+    ctx.beginPath();
+    ctx.moveTo(outline[0].x1, outline[0].y1);
+    outline.forEach((seg, i) => {
+        ctx.lineTo(seg.x2, seg.y2);
+        const next = outline[(i+1)%6];
+        ctx.arcTo(seg.arcX, seg.arcY, next.x1, next.y1, seg.r);
     });
+    ctx.closePath(); ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
+
+    // 2. Draw Banding
+    ctx.lineWidth = 4; ctx.strokeStyle = "red";
+    for(let i=0; i<6; i++) {
+        if (!segChecks[i]) continue;
+        const b = banding[i];
+        ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
+        
+        if (segChecks[(i+1)%6]) {
+            const next = banding[(i+1)%6];
+            ctx.beginPath(); ctx.moveTo(b.x2, b.y2);
+            ctx.arcTo(b.arcX, b.arcY, next.x1, next.y1, b.r);
+            ctx.stroke();
+        }
+    }
 
     if (highlightedCorner !== -1 && !targetCtx) {
-        const c = corners[highlightedCorner], pP = corners[(highlightedCorner + 5) % 6].p, pN = corners[(highlightedCorner + 1) % 6].p;
-        const v1 = { x: pP[0]-c.p[0], y: pP[1]-c.p[1] }, v2 = { x: pN[0]-c.p[0], y: pN[1]-c.p[1] };
-        const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
-        const bisect = { x: (v1.x/mag1 + v2.x/mag2), y: (v1.y/mag1 + v2.y/mag2) }, bMag = Math.hypot(bisect.x, bisect.y);
-        const hX = (c.p[0] * scale + offX) + (bisect.x / (bMag || 1)) * (c.r * 0.414), hY = ((th - c.p[1]) * scale + offY) - (bisect.y / (bMag || 1)) * (c.r * 0.414);
-        ctx.beginPath(); ctx.arc(hX, hY, 25, 0, Math.PI * 2); ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 3; ctx.stroke();
+        const c = outline[highlightedCorner];
+        ctx.beginPath(); ctx.arc(c.arcX, c.arcY, 25, 0, Math.PI * 2); ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 3; ctx.stroke();
     }
     if (!targetCtx) drawLDimensions(ctx, pts, scale, offX, offY, th);
 }
@@ -156,11 +165,11 @@ function drawLDimensions(ctx, pts, scale, offX, offY, th) {
     const isLeft = document.getElementById("type").value === "left";
     const drawDim = (x1, y1, x2, y2, label) => {
         const angle = Math.atan2(y2 - y1, x2 - x1);
-        const textWidth = ctx.measureText(label).width + 20, mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        const textWidth = ctx.measureText(label).width + 25, mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
         ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(mx - Math.cos(angle)*(textWidth/2), my - Math.sin(angle)*(textWidth/2));
         ctx.moveTo(mx + Math.cos(angle)*(textWidth/2), my + Math.sin(angle)*(textWidth/2)); ctx.lineTo(x2, y2);
         ctx.strokeStyle = "#444"; ctx.lineWidth = 1.5; ctx.stroke();
-        const s = 8; ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - s*Math.cos(angle-Math.PI/6), y2 - s*Math.sin(angle-Math.PI/6)); ctx.lineTo(x2 - s*Math.cos(angle+Math.PI/6), y2 - s*Math.sin(angle+Math.PI/6)); ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
+        const s = 10; ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - s*Math.cos(angle-Math.PI/6), y2 - s*Math.sin(angle-Math.PI/6)); ctx.lineTo(x2 - s*Math.cos(angle+Math.PI/6), y2 - s*Math.sin(angle+Math.PI/6)); ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
         ctx.fillText(label, mx, my + 6);
     };
     drawDim(offX, offY + th*scale + 55, offX + A*scale, offY + th*scale + 55, `A: ${A}mm`);
