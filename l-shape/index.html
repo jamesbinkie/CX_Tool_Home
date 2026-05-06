@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>L-Shape Generator</title>
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    .warning-box {
+      display: none;
+      background: #313338;
+      color: #f2f3f5;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      font-weight: 600;
+      border: 4px solid #f39c12;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+    .range { font-size: 11px; color: #009fe3; margin-top: 4px; }
+    .radius-controls { display: flex; align-items: center; gap: 15px; margin-top: 10px; }
+    .radius-controls input[type="range"] { width: 150px; margin: 0; }
+  </style>
+</head>
+
+<body>
+
+<div class="nav-header">
+  <button onclick="window.location.href='../index.html'" style="background: #4f545c;">← Back to Home</button>
+</div>
+
+<div class="container">
+  <h2>L-Shape Generator (mm)</h2>
+
+  <div id="sheetWarning" class="warning-box">
+    ⚠️ Part exceeds maximum sheet size (2400 x 1200 mm).
+  </div>
+
+  <div class="controls panel">
+    <label>Orientation:
+      <select id="type">
+        <option value="right">Right L</option>
+        <option value="left">Left L</option>
+      </select>
+    </label>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+        <label>Total Width (A):
+            <input id="totalW" type="number" value="1000" onclick="this.select()">
+            <div class="range">Min 200 mm — Max 2400 mm</div>
+        </label>
+        <label>Total Height (B):
+            <input id="totalH" type="number" value="800" onclick="this.select()">
+            <div class="range">Min 200 mm — Max 2400 mm</div>
+        </label>
+        <label>Leg Width (C):
+            <input id="legW" type="number" value="300" onclick="this.select()">
+            <div class="range">Min 200 mm</div>
+        </label>
+        <label>Leg Height (D):
+            <input id="legH" type="number" value="300" onclick="this.select()">
+            <div class="range">Min 200 mm</div>
+        </label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Radius Settings</h3>
+    <div style="display: flex; flex-wrap: wrap; gap: 40px;">
+        <div>
+            <label>Internal Corner Radius:</label>
+            <div class="radius-controls">
+                <input type="range" id="intRadSlider" min="50" max="300" value="50">
+                <input type="number" id="intRadNum" value="50" min="50" style="width: 70px;">
+            </div>
+        </div>
+        <div>
+            <label>External Corner Radius:</label>
+            <div class="radius-controls">
+                <input type="range" id="extRadSlider" min="0" max="200" value="0">
+                <input type="number" id="extRadNum" value="0" min="0" style="width: 70px;">
+            </div>
+            <div class="edge-controls" style="margin-top: 10px;">
+                <label><input type="checkbox" id="round0"> Corner 1</label>
+                <label><input type="checkbox" id="round1"> Corner 2</label>
+                <label><input type="checkbox" id="round2"> Corner 3</label>
+                <label><input type="checkbox" id="round4"> Corner 4</label>
+                <label><input type="checkbox" id="round5"> Corner 5</label>
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <h3>Edge Banding</h3>
+  <div class="edge-controls panel">
+    <label><input type="checkbox" id="bandBottom"> Bottom</label>
+    <label><input type="checkbox" id="bandRight"> Right</label>
+    <label><input type="checkbox" id="bandInnerH"> Inner Horizontal</label>
+    <label><input type="checkbox" id="bandInnerV"> Inner Vertical</label>
+    <label><input type="checkbox" id="bandTop"> Top</label>
+    <label><input type="checkbox" id="bandLeft"> Left</label>
+  </div>
+
+  <h3>Export</h3>
+  <div class="file-controls panel" style="display: flex; align-items: flex-end; gap: 20px;">
+    <label>File Name: <input id="fileName" type="text" value="l_shape"></label>
+    <button onclick="downloadPNG()">Download PNG</button>
+    <button onclick="downloadDXF()">Download DXF</button>
+  </div>
+
+  <canvas id="canvas" width="900" height="600"></canvas>
+</div>
+
+<div id="versionLabel">v2.6.2</div>
+
+<script src="script.js"></script>
+
+</body>
+</html>
