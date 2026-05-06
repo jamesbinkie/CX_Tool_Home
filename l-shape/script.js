@@ -2,7 +2,7 @@ let highlightedCorner = -1;
 
 window.onload = () => {
     const ids = ["type", "totalW", "totalH", "legW", "legH", "rad0", "rad1", "rad2", "rad3", "rad4", "rad5",
-                 "bandBottom", "bandLeft", "bandTop", "bandOuterLeg", "bandInnerH", "bandInnerV"];
+                 "bandA", "bandB", "bandC", "bandD", "bandInnerH", "bandInnerV"];
     
     ids.forEach(id => {
         const el = document.getElementById(id);
@@ -10,6 +10,7 @@ window.onload = () => {
             el.addEventListener("change", updateUI);
             if (el.tagName === "INPUT") {
                 el.addEventListener("input", updateUI);
+                // On Blur: Perform hard-clamp and update the numbers in the boxes
                 if (!id.startsWith("band")) el.addEventListener("blur", validateAndClamp);
             }
         }
@@ -24,41 +25,67 @@ window.onload = () => {
 };
 
 function updateUI() {
-    refreshWarnings();
+    refreshHintsAndWarnings();
     drawLShape();
 }
 
+/**
+ * Prioritizes 2400x1200 sheet limits and updates input box values.
+ */
 function validateAndClamp() {
     const minVal = 200;
-    const maxSheetDim = 2400, midSheetDim = 1200;
+    const sheetW = 2400;
+    const sheetH = 1200;
 
-    let tw = parseFloat(document.getElementById("totalW").value) || minVal;
-    let th = parseFloat(document.getElementById("totalH").value) || minVal;
-    let lw = parseFloat(document.getElementById("legW").value) || minVal;
-    let lh = parseFloat(document.getElementById("legH").value) || minVal;
+    const twIn = document.getElementById("totalW");
+    const thIn = document.getElementById("totalH");
+    const lwIn = document.getElementById("legW");
+    const lhIn = document.getElementById("legH");
 
-    tw = Math.max(minVal, Math.min(tw, maxSheetDim));
-    th = Math.max(minVal, Math.min(th, maxSheetDim));
-    if (tw > midSheetDim) th = Math.min(th, midSheetDim);
-    else if (th > midSheetDim) tw = Math.min(tw, midSheetDim);
+    let tw = parseFloat(twIn.value) || minVal;
+    let th = parseFloat(thIn.value) || minVal;
+    let lw = parseFloat(lwIn.value) || minVal;
+    let lh = parseFloat(lhIn.value) || minVal;
 
+    // 1. Initial Sheet Boundaries (Either can be 2400, but only one)
+    tw = Math.max(minVal, Math.min(tw, sheetW));
+    th = Math.max(minVal, Math.min(th, sheetW));
+
+    if (tw > sheetH) th = Math.min(th, sheetH);
+    else if (th > sheetH) tw = Math.min(tw, sheetH);
+
+    // 2. Leg Constraints (Must be smaller than totals)
     lw = Math.max(minVal, Math.min(lw, tw - 50));
     lh = Math.max(minVal, Math.min(lh, th - 50));
 
+    // Update the actual text boxes
+    twIn.value = Math.round(tw);
+    thIn.value = Math.round(th);
+    lwIn.value = Math.round(lw);
+    lhIn.value = Math.round(lh);
+
+    // Corner 4 (Inner) Min 50
     const r3 = document.getElementById("rad3");
     if (parseFloat(r3.value) < 50) r3.value = 50;
 
-    document.getElementById("totalW").value = tw;
-    document.getElementById("totalH").value = th;
-    document.getElementById("legW").value = lw;
-    document.getElementById("legH").value = lh;
-    
     updateUI();
 }
 
-function refreshWarnings() {
-    const tw = parseFloat(document.getElementById("totalW").value), th = parseFloat(document.getElementById("totalH").value);
-    document.getElementById("sheetWarning").style.display = (Math.max(tw, th) > 2400 || Math.min(tw, th) > 1200) ? "block" : "none";
+function refreshHintsAndWarnings() {
+    const A = parseFloat(document.getElementById("totalW").value);
+    const B = parseFloat(document.getElementById("totalH").value);
+    
+    // Sheet Size Warning
+    const tooBig = (Math.max(A, B) > 2400 || Math.min(A, B) > 1200);
+    document.getElementById("sheetWarning").style.display = tooBig ? "block" : "none";
+
+    // Dynamic Labels for Max Values
+    if (document.getElementById("rangeA")) {
+        document.getElementById("rangeA").textContent = `Min 200 — Max ${B > 1200 ? 1200 : 2400} mm`;
+        document.getElementById("rangeB").textContent = `Min 200 — Max ${A > 1200 ? 1200 : 2400} mm`;
+        document.getElementById("rangeC").textContent = `Min 200 — Max ${A - 50} mm`;
+        document.getElementById("rangeD").textContent = `Min 200 — Max ${B - 50} mm`;
+    }
 }
 
 function getPoints() {
@@ -68,6 +95,7 @@ function getPoints() {
     const D = parseFloat(document.getElementById("legH").value) || 300;
     const isLeft = document.getElementById("type").value === "left";
 
+    // P0: BL, P1: BR, P2: Leg Up, P3: Inner, P4: Leg Top, P5: TL
     let pts = [[0, 0], [A, 0], [A, D], [C, D], [C, B], [0, B]];
     if (isLeft) pts = pts.map(p => [A - p[0], p[1]]);
     return pts;
@@ -79,7 +107,8 @@ function drawLShape(targetCtx = null) {
     if (!targetCtx) ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const pts = getPoints();
-    const tw = parseFloat(document.getElementById("totalW").value), th = parseFloat(document.getElementById("totalH").value);
+    const tw = parseFloat(document.getElementById("totalW").value);
+    const th = parseFloat(document.getElementById("totalH").value);
     const margin = 140, scale = Math.min((canvas.width - margin * 2) / tw, (canvas.height - margin * 2) / th);
     const offX = (canvas.width - tw * scale) / 2, offY = (canvas.height - th * scale) / 2;
 
@@ -87,13 +116,12 @@ function drawLShape(targetCtx = null) {
         let r = parseFloat(document.getElementById(`rad${i}`).value) || 0;
         if (i === 3 && r < 50) r = 50;
         
-        // Safety Clamp: Radius cannot be more than 45% of adjacent side lengths to prevent overlapping
+        // Safety: Clamp radius to half side length
         const pPrev = pts[(i + 5) % 6], pNext = pts[(i + 1) % 6];
-        const len1 = Math.hypot(p[0] - pPrev[0], p[1] - pPrev[1]);
-        const len2 = Math.hypot(p[0] - pNext[0], p[1] - pNext[1]);
-        r = Math.min(r, len1 * 0.45, len2 * 0.45);
+        const len1 = Math.hypot(p[0]-pPrev[0], p[1]-pPrev[1]), len2 = Math.hypot(p[0]-pNext[0], p[1]-pNext[1]);
+        r = Math.min(r, len1 * 0.48, len2 * 0.48);
 
-        return { p: p, r: r * scale };
+        return { p: p, r: r * scale, rVal: r };
     });
 
     ctx.beginPath();
@@ -110,19 +138,35 @@ function drawLShape(targetCtx = null) {
     ctx.closePath();
     ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
+    // HIGHLIGHT LOGIC: Center it on the arc, not the sharp corner
     if (highlightedCorner !== -1 && !targetCtx) {
+        const c = corners[highlightedCorner];
+        const pPrev = corners[(highlightedCorner + 5) % 6].p;
+        const pNext = corners[(highlightedCorner + 1) % 6].p;
+        
+        // Find bisector direction to offset the highlight onto the curve
+        const v1 = { x: pPrev[0] - c.p[0], y: pPrev[1] - c.p[1] };
+        const v2 = { x: pNext[0] - c.p[0], y: pNext[1] - c.p[1] };
+        const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
+        const bisect = { x: (v1.x/mag1 + v2.x/mag2), y: (v1.y/mag1 + v2.y/mag2) };
+        const bMag = Math.hypot(bisect.x, bisect.y);
+        
+        // Final position: Sharp corner point + radius offset along bisector
+        const rOffset = c.r * 0.414; // Approximate distance from vertex to arc midpoint for 90deg
+        const hX = (c.p[0] * scale + offX) + (bisect.x / (bMag || 1)) * rOffset;
+        const hY = ((th - c.p[1]) * scale + offY) - (bisect.y / (bMag || 1)) * rOffset;
+
         ctx.beginPath();
-        const cp = corners[highlightedCorner].p;
-        ctx.arc(cp[0] * scale + offX, (th - cp[1]) * scale + offY, 20, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0, 159, 227, 0.3)"; ctx.fill();
-        ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
+        ctx.arc(hX, hY, 25, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill();
+        ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 3; ctx.stroke();
     }
 
     if (!targetCtx) drawDimensions(ctx, pts, scale, offX, offY, th);
 }
 
 function drawDimensions(ctx, pts, scale, offX, offY, th) {
-    ctx.font = "bold 16px Arial"; ctx.fillStyle = "#000"; ctx.textAlign = "center";
+    ctx.font = "bold 15px Arial"; ctx.fillStyle = "#000"; ctx.textAlign = "center";
     const A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value);
     const C = parseFloat(document.getElementById("legW").value), D = parseFloat(document.getElementById("legH").value);
 
