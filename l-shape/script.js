@@ -1,8 +1,7 @@
 let highlightedCorner = -1;
 
 window.onload = () => {
-    const ids = ["type", "totalW", "totalH", "legW", "legH", "rad0", "rad1", "rad2", "rad3", "rad4", "rad5",
-                 "bandA", "bandB", "bandC", "bandD", "bandInnerH", "bandInnerV"];
+    const ids = ["type", "totalW", "totalH", "legW", "legH", "rad0", "rad1", "rad2", "rad3", "rad4", "rad5", "bandAll"];
     
     ids.forEach(id => {
         const el = document.getElementById(id);
@@ -10,7 +9,7 @@ window.onload = () => {
             el.addEventListener("change", () => updateUI());
             if (el.tagName === "INPUT") {
                 el.addEventListener("input", () => updateUI());
-                if (!id.startsWith("band")) el.addEventListener("blur", validateAndClamp);
+                if (id !== "bandAll") el.addEventListener("blur", validateAndClamp);
             }
         }
     });
@@ -50,12 +49,12 @@ function validateAndClamp() {
         let r1 = parseFloat(r1In.value) || 0, r2 = parseFloat(r2In.value) || 0;
         if ((r1 + r2) > sideLengths[i]) {
             conflict = true;
-            const factor = sideLengths[i] / (r1 + r2 + 0.5);
+            const factor = sideLengths[i] / (r1 + r2 + 0.1);
             r1In.value = Math.floor(r1 * factor); r2In.value = Math.floor(r2 * factor);
         }
     }
-    const rad3El = document.getElementById("rad3");
-    if (parseFloat(rad3El.value) < 50) rad3El.value = 50;
+    const r3El = document.getElementById("rad3");
+    if (parseFloat(r3El.value) < 50) r3El.value = 50;
 
     document.getElementById("radiusWarning").style.display = conflict ? "block" : "none";
     updateUI();
@@ -78,96 +77,101 @@ function getPoints() {
     return pts;
 }
 
+function intersectLines(e1, e2) {
+    const { x1, y1, x2, y2 } = e1, { x1: x3, y1: y3, x2: x4, y2: y4 } = e2;
+    const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (denom === 0) return { x: x2, y: y2 };
+    return {
+        x: ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom,
+        y: ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom
+    };
+}
+
 function drawLShape(targetCtx = null) {
     const canvas = document.getElementById("canvas"), ctx = targetCtx || canvas.getContext("2d");
     if (!targetCtx) ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const pts = getPoints(), tw = parseFloat(document.getElementById("totalW").value) || 1000, th = parseFloat(document.getElementById("totalH").value) || 800;
-    const margin = 140, scale = Math.min((canvas.width - margin * 2) / tw, (canvas.height - margin * 2) / th);
+    const margin = 140, scale = Math.min((canvas.width - margin * 2) / (tw||1), (canvas.height - margin * 2) / (th||1));
     const offX = (canvas.width - tw * scale) / 2, offY = (canvas.height - th * scale) / 2;
-
-    const corners = pts.map((p, i) => ({ p, r: (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale }));
-
-    // Define continuous banding logic mapping
-    const segCheck = {
-        0: document.getElementById("bandA").checked,
-        1: document.getElementById("bandD").checked,
-        2: document.getElementById("bandInnerH").checked,
-        3: document.getElementById("bandInnerV").checked,
-        4: document.getElementById("bandC").checked,
-        5: document.getElementById("bandB").checked
-    };
-
     const isLeft = document.getElementById("type").value === "left";
 
-    // Trace complete path with a consistent parallel offset to maintain concave correctness
-    const tracePathData = (cArr, offset = 0) => {
-        const n = cArr.length, data = [];
-        for (let i = 0; i < n; i++) {
-            const curr = cArr[i], next = cArr[(i + 1) % n], nn = cArr[(i + 2) % n];
-            const dx = next.p[0] - curr.p[0], dy = next.p[1] - curr.p[1], l = Math.hypot(dx, dy) || 1;
-            const nx = (dy / l) * offset, ny = (-dx / l) * offset;
-            
-            // Parallel Correctness: concave internal corner (i=2 in right L-shape CCW) shrinks
-            const effR = next.r + (i === 2 ? -offset : offset);
-            
-            data.push({ 
-                x1: (curr.p[0] + (dx/l)*(curr.r/scale)) * scale + offX + nx,
-                y1: (th - (curr.p[1] + (dy/l)*(curr.r/scale))) * scale + offY - ny,
-                x2: (next.p[0] - (dx/l)*(next.r/scale)) * scale + offX + nx,
-                y2: (th - (next.p[1] - (dy/l)*(next.r/scale))) * scale + offY - ny,
-                arcX: next.p[0]*scale + offX + nx, arcY: (th - next.p[1])*scale + offY - ny,
-                r: Math.max(0, effR)
-            });
-        }
-        return data;
-    };
+    // Map exact sharp corner coordinates
+    const corners = pts.map((p, i) => ({
+        x: p[0] * scale + offX,
+        y: (th - p[1]) * scale + offY,
+        r: (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale
+    }));
 
-    const outline = tracePathData(corners, 0);
-    const banding = tracePathData(corners, 12);
-
-    // 1. Black Outline
+    // 1. Draw Clean Black Outline
     ctx.beginPath();
-    ctx.moveTo(outline[0].x1, outline[0].y1);
-    outline.forEach((seg, i) => {
-        ctx.lineTo(seg.x2, seg.y2);
-        const next = outline[(i+1)%6];
-        ctx.arcTo(seg.arcX, seg.arcY, next.x1, next.y1, seg.r);
-    });
-    ctx.closePath(); ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
-
-    // 2. Red Banding (Continuous logic solves joining defects)
-    ctx.lineWidth = 4; ctx.strokeStyle = "red";
+    // Starting in the middle of a straight line ensures arcTo connects the whole loop seamlessly
+    const mX = (corners[5].x + corners[0].x) / 2;
+    const mY = (corners[5].y + corners[0].y) / 2;
+    ctx.moveTo(mX, mY);
     for(let i=0; i<6; i++) {
-        if (!segCheck[i]) continue;
-        const b = banding[i], nextIdx = (i+1)%6, next = banding[nextIdx];
+        const c = corners[i], n = corners[(i+1)%6];
+        ctx.arcTo(c.x, c.y, n.x, n.y, c.r);
+    }
+    ctx.closePath();
+    ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
+
+    // 2. Draw Continuous Red Banding
+    if (document.getElementById("bandAll").checked) {
+        const offset = 12; // Gap thickness in pixels
+        const offCorners = [];
         
-        ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
-        
-        // Adjacent Segment-Join Logic
-        if (segCheck[nextIdx]) {
-            // Both checked -> draw smooth join line or arc
-            ctx.beginPath(); ctx.moveTo(b.x2, b.y2);
-            if (b.r > 0) ctx.arcTo(b.arcX, b.arcY, next.x1, next.y1, b.r);
-            else { ctx.lineTo(b.arcX, b.arcY); ctx.lineTo(next.x1, next.y1); }
-            ctx.stroke();
-        } else if (b.r > 0) {
-            // Next NOT checked -> If rounded, draw arc half to prevent gaps
-            ctx.beginPath(); ctx.moveTo(b.x2, b.y2); ctx.arcTo(b.arcX, b.arcY, next.x1, next.y1, b.r); ctx.stroke();
+        // Mathematically push every line segment out by 12px and find new intersections
+        for(let i=0; i<6; i++) {
+            const prev = corners[(i+5)%6], curr = corners[i], next = corners[(i+1)%6];
+            
+            const dx1 = curr.x - prev.x, dy1 = curr.y - prev.y, l1 = Math.hypot(dx1, dy1) || 1;
+            const dx2 = next.x - curr.x, dy2 = next.y - curr.y, l2 = Math.hypot(dx2, dy2) || 1;
+
+            // Outward normals for L-Shapes (Left vs Right orientation logic)
+            let nx1, ny1, nx2, ny2;
+            if (isLeft) { 
+                nx1 = dy1/l1; ny1 = -dx1/l1; nx2 = dy2/l2; ny2 = -dx2/l2;
+            } else { 
+                nx1 = -dy1/l1; ny1 = dx1/l1; nx2 = -dy2/l2; ny2 = dx2/l2;
+            }
+
+            const line1 = { x1: prev.x + nx1*offset, y1: prev.y + ny1*offset, x2: curr.x + nx1*offset, y2: curr.y + ny1*offset };
+            const line2 = { x1: curr.x + nx2*offset, y1: curr.y + ny2*offset, x2: next.x + nx2*offset, y2: next.y + ny2*offset };
+
+            const inter = intersectLines(line1, line2);
+
+            // Inner Corner (idx 3) is concave, so its offset radius SHRINKS. Convex corners GROW.
+            let effR = curr.r + (i === 3 ? -offset : offset);
+            if (effR < 0) effR = 0; // Prevent negative radius crash
+
+            offCorners.push({ x: inter.x, y: inter.y, r: effR });
         }
+
+        // Draw perfectly parallel loop
+        ctx.beginPath();
+        const oMX = (offCorners[5].x + offCorners[0].x) / 2;
+        const oMY = (offCorners[5].y + offCorners[0].y) / 2;
+        ctx.moveTo(oMX, oMY);
+        for(let i=0; i<6; i++) {
+            const c = offCorners[i], n = offCorners[(i+1)%6];
+            ctx.arcTo(c.x, c.y, n.x, n.y, c.r);
+        }
+        ctx.closePath();
+        ctx.lineWidth = 4; ctx.strokeStyle = "red"; ctx.stroke();
     }
 
+    // Highlighter
     if (highlightedCorner !== -1 && !targetCtx) {
-        const segIdx = (highlightedCorner + 5) % 6;
-        const cp = outline[segIdx];
-        ctx.beginPath(); ctx.arc(cp.arcX, cp.arcY, 25, 0, Math.PI * 2); 
-        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 3; ctx.stroke();
+        const c = corners[highlightedCorner];
+        ctx.beginPath(); ctx.arc(c.x, c.y, 20, 0, Math.PI * 2); 
+        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
     }
+    
     if (!targetCtx) drawLDimensions(ctx, pts, scale, offX, offY, th);
 }
 
 function drawLDimensions(ctx, pts, scale, offX, offY, th) {
-    // FIX: Bold and prefixed labels
     ctx.font = "bold 18px Segoe UI, Arial"; ctx.fillStyle = "#000"; ctx.textAlign = "center";
     const A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value), C = parseFloat(document.getElementById("legW").value), D = parseFloat(document.getElementById("legH").value);
     const isLeft = document.getElementById("type").value === "left";
