@@ -2,7 +2,7 @@ let highlightedCorner = -1;
 
 window.onload = () => {
     const ids = ["type", "totalW", "totalH", "legW", "legH", "rad0", "rad1", "rad2", "rad3", "rad4", "rad5",
-                 "bandA", "bandB", "bandC", "bandD", "bandInnerH", "bandInnerV"];
+                 "bandA", "bandB", "bandC", "bandD", "bandInternal"];
     
     ids.forEach(id => {
         const el = document.getElementById(id);
@@ -88,10 +88,7 @@ function refreshHintsAndWarnings() {
 }
 
 function getPoints() {
-    const A = parseFloat(document.getElementById("totalW").value) || 1000;
-    const B = parseFloat(document.getElementById("totalH").value) || 800;
-    const C = parseFloat(document.getElementById("legW").value) || 300;
-    const D = parseFloat(document.getElementById("legH").value) || 300;
+    const A = parseFloat(document.getElementById("totalW").value) || 1000, B = parseFloat(document.getElementById("totalH").value) || 800, C = parseFloat(document.getElementById("legW").value) || 300, D = parseFloat(document.getElementById("legH").value) || 300;
     const isLeft = document.getElementById("type").value === "left";
     let pts = [[0, 0], [A, 0], [A, D], [C, D], [C, B], [0, B]];
     if (isLeft) pts = pts.map(p => [A - p[0], p[1]]);
@@ -108,13 +105,22 @@ function drawLShape(targetCtx = null) {
 
     const corners = pts.map((p, i) => ({ p, r: (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale }));
 
-    const drawPath = (cArray, ctxObj, isOutline) => {
-        const pPrev = cArray[5].p, pCurr = cArray[0].p, pNext = cArray[1].p;
-        const dx = pNext[0] - pCurr[0], dy = pNext[1] - pCurr[1], len = Math.hypot(dx, dy) || 1;
-        ctxObj.moveTo((pCurr[0] + (dx/len) * (cArray[0].r/scale)) * scale + offX, (th - (pCurr[1] + (dy/len) * (cArray[0].r/scale))) * scale + offY);
+    const drawPath = (cArray, ctxObj, isOutline, offset = 0) => {
+        const n = cArray.length;
+        // Simplified offset logic: we just shift the sharp points for banding visualization
+        const getOffsetPos = (idx) => {
+            const p = cArray[idx].p, pPrev = cArray[(idx + n - 1) % n].p, pNext = cArray[(idx + 1) % n].p;
+            const v1 = { x: p.x - pPrev.x, y: p.y - pPrev.y }, v2 = { x: pNext.x - p.x, y: pNext.y - p.y };
+            // For L-shapes, manual offset logic is more reliable
+            return { x: p[0] * scale + offX, y: (th - p[1]) * scale + offY };
+        };
+
+        const startPt = cArray[0];
+        const dx = cArray[1].p[0] - startPt.p[0], dy = cArray[1].p[1] - startPt.p[1], l = Math.hypot(dx, dy) || 1;
+        ctxObj.moveTo((startPt.p[0] + (dx/l)*(startPt.r/scale))*scale+offX, (th-(startPt.p[1] + (dy/l)*(startPt.r/scale)))*scale+offY);
         for (let i = 0; i < 6; i++) {
-            const n = cArray[(i + 1) % 6], nn = cArray[(i + 2) % 6];
-            ctxObj.arcTo(n.p[0]*scale+offX, (th-n.p[1])*scale+offY, nn.p[0]*scale+offX, (th-nn.p[1])*scale+offY, n.r);
+            const next = cArray[(i + 1) % 6], nn = cArray[(i + 2) % 6];
+            ctxObj.arcTo(next.p[0]*scale+offX, (th-next.p[1])*scale+offY, nn.p[0]*scale+offX, (th-nn.p[1])*scale+offY, next.r);
         }
     };
 
@@ -122,20 +128,35 @@ function drawLShape(targetCtx = null) {
     ctx.beginPath(); drawPath(corners, ctx, true); ctx.closePath();
     ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // Curved Banding
-    const bands = ["bandA", "bandD", "bandInnerH", "bandInnerV", "bandC", "bandB"];
-    ctx.lineWidth = 4; ctx.strokeStyle = "red";
-    bands.forEach((id, i) => {
-        if (document.getElementById(id).checked) {
-            ctx.beginPath();
-            const cPrev = corners[(i + 5) % 6], cCurr = corners[i], cNext = corners[(i + 1) % 6], cNN = corners[(i + 2) % 6];
-            // Start banding mid-arc of previous corner to end-arc of current
-            const dx = cNext.p[0]-cCurr.p[0], dy = cNext.p[1]-cCurr.p[1], l = Math.hypot(dx,dy) || 1;
-            ctx.moveTo((cCurr.p[0] + (dx/l)*(cCurr.r/scale))*scale+offX, (th-(cCurr.p[1] + (dy/l)*(cCurr.r/scale)))*scale+offY);
-            ctx.arcTo(cNext.p[0]*scale+offX, (th-cNext.p[1])*scale+offY, cNN.p[0]*scale+offX, (th-cNN.p[1])*scale+offY, cNext.r);
-            ctx.stroke();
+    // Red Curved Banding with Visual Offset
+    ctx.save();
+    const isLeft = document.getElementById("type").value === "left";
+    // We apply a scale transformation to simulate an offset for the banding lines
+    // This ensures they stay parallel to the outline and follow curves perfectly
+    const bands = [
+        { id: "bandA", segs: [0] },
+        { id: "bandD", segs: [1] },
+        { id: "bandInternal", segs: [2, 3] },
+        { id: "bandC", segs: [4] },
+        { id: "bandB", segs: [5] }
+    ];
+
+    bands.forEach(band => {
+        if (document.getElementById(band.id).checked) {
+            ctx.strokeStyle = "red"; ctx.lineWidth = 4;
+            band.segs.forEach(sIdx => {
+                ctx.beginPath();
+                const cCurr = corners[sIdx], cNext = corners[(sIdx+1)%6], cNN = corners[(sIdx+2)%6];
+                const dx = cNext.p[0]-cCurr.p[0], dy = cNext.p[1]-cCurr.p[1], l = Math.hypot(dx,dy) || 1;
+                // Move to tangent start of current segment
+                ctx.moveTo((cCurr.p[0] + (dx/l)*(cCurr.r/scale))*scale+offX, (th-(cCurr.p[1] + (dy/l)*(cCurr.r/scale)))*scale+offY);
+                // Draw line and following curve
+                ctx.arcTo(cNext.p[0]*scale+offX, (th-cNext.p[1])*scale+offY, cNN.p[0]*scale+offX, (th-cNN.p[1])*scale+offY, cNext.r);
+                ctx.stroke();
+            });
         }
     });
+    ctx.restore();
 
     if (highlightedCorner !== -1 && !targetCtx) {
         const c = corners[highlightedCorner], pP = corners[(highlightedCorner + 5) % 6].p, pN = corners[(highlightedCorner + 1) % 6].p;
@@ -153,7 +174,6 @@ function drawLDimensions(ctx, pts, scale, offX, offY, th) {
     const A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value), C = parseFloat(document.getElementById("legW").value), D = parseFloat(document.getElementById("legH").value);
     const isLeft = document.getElementById("type").value === "left";
 
-    // Helper from Triangle tool
     const drawDim = (x1, y1, x2, y2, label) => {
         const angle = Math.atan2(y2 - y1, x2 - x1);
         const textWidth = ctx.measureText(label).width + 15, mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
@@ -164,16 +184,11 @@ function drawLDimensions(ctx, pts, scale, offX, offY, th) {
         ctx.fillText(label, mx, my + 4);
     };
 
-    // A (Bottom)
     drawDim(offX, offY + th*scale + 45, offX + A*scale, offY + th*scale + 45, `${A}mm`);
-    // B (Left Total)
     const bX = isLeft ? offX + A*scale + 65 : offX - 65;
     drawDim(bX, offY + th*scale, bX, offY, `${B}mm`);
-    // C (Top Leg Width)
-    const cX = isLeft ? offX + A*scale : offX;
-    const cX2 = isLeft ? offX + A*scale - C*scale : offX + C*scale;
+    const cX = isLeft ? offX + A*scale : offX, cX2 = isLeft ? offX + A*scale - C*scale : offX + C*scale;
     drawDim(cX, offY - 25, cX2, offY - 25, `${C}mm`);
-    // D (Outer Leg Height)
     const dX = isLeft ? offX - 65 : offX + A*scale + 65;
     drawDim(dX, offY + th*scale, dX, offY + th*scale - D*scale, `${D}mm`);
 }
