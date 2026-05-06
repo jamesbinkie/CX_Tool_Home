@@ -5,10 +5,10 @@
   <title>L-Shape Generator</title>
   <link rel="stylesheet" href="../style.css">
   <style>
-    /* Warning Box Styling: Consistent with Triangle tool */
+    /* Standardized Warning Box: Dark background with thick orange outline */
     .warning-box {
       display: none;
-      background: #313338;
+      background: #313338; 
       color: #f2f3f5;
       padding: 15px;
       border-radius: 10px;
@@ -35,6 +35,7 @@
     .corner-input-wrap:hover { border-color: #009fe3; }
     .corner-input-wrap label { font-size: 12px; color: #b5bac1; margin-bottom: 5px; min-width: auto; }
     
+    /* Contrast Fix: Ensures bright text on dark input background */
     .corner-input-wrap input { 
       margin-top: 0; 
       width: 100%; 
@@ -62,7 +63,7 @@
   <h2>L-Shape Generator (mm)</h2>
 
   <div id="sheetWarning" class="warning-box">
-    ⚠️ Part exceeds maximum sheet size (2400 x 1200 mm). Values have been adjusted.
+    ⚠️ Part exceeds maximum sheet size (2400 x 1200 mm). Values have been adjusted to fit.
   </div>
 
   <div class="controls panel">
@@ -93,7 +94,7 @@
 
   <div class="panel">
     <h3>Corner Radii</h3>
-    <p style="font-size: 12px; color: #b5bac1; margin-bottom: 10px;">Hover to highlight the corner. Corner 4 is the internal radius (Min 50mm).</p>
+    <p style="font-size: 12px; color: #b5bac1; margin-bottom: 10px;">Hover to highlight the corner on the diagram. Corner 4 is the internal radius (Min 50mm).</p>
     <div class="corner-grid">
         <div class="corner-input-wrap" data-corner="0"><label>Corner 1</label><input type="number" id="rad0" value="0"></div>
         <div class="corner-input-wrap" data-corner="1"><label>Corner 2</label><input type="number" id="rad1" value="0"></div>
@@ -107,11 +108,11 @@
   <h3>Edge Banding</h3>
   <div class="edge-controls panel">
     <label><input type="checkbox" id="bandA"> Bottom (A)</label>
-    <label><input type="checkbox" id="bandB"> Left (B)</label>
-    <label><input type="checkbox" id="bandC"> Top (C)</label>
     <label><input type="checkbox" id="bandD"> Outer Leg (D)</label>
     <label><input type="checkbox" id="bandInnerH"> Inner Horiz</label>
     <label><input type="checkbox" id="bandInnerV"> Inner Vert</label>
+    <label><input type="checkbox" id="bandC"> Top (C)</label>
+    <label><input type="checkbox" id="bandB"> Left (B)</label>
   </div>
 
   <h3>Export</h3>
@@ -124,7 +125,7 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v2.7.3</div>
+<div id="versionLabel">v2.7.4</div>
 
 <script src="script.js"></script>
 </body>
