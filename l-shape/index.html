@@ -33,7 +33,20 @@
     }
     .corner-input-wrap:hover { border-color: #009fe3; }
     .corner-input-wrap label { font-size: 12px; color: #b5bac1; margin-bottom: 5px; min-width: auto; }
-    .corner-input-wrap input { margin-top: 0; width: 100%; border: none; background: transparent; padding: 5px 0; }
+    
+    /* FIX: Set explicit text color for inputs */
+    .corner-input-wrap input { 
+      margin-top: 0; 
+      width: 100%; 
+      border: none; 
+      background: transparent; 
+      padding: 5px 0; 
+      color: #f2f3f5; 
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .corner-input-wrap input:focus { outline: none; }
+
     .range { font-size: 11px; color: #009fe3; margin-top: 4px; font-weight: normal; }
     .inner-corner { border: 2px solid #009fe3; background: #2c2f33; }
   </style>
@@ -68,11 +81,11 @@
         <input id="totalH" type="number" value="800" onclick="this.select()">
         <div class="range">Min 200 — Max 2400 mm</div>
     </label>
-    <label>Leg Width (C):
+    <label>Top Leg Width (C):
         <input id="legW" type="number" value="300" onclick="this.select()">
         <div class="range">Min 200 mm</div>
     </label>
-    <label>Leg Height (D):
+    <label>Bottom Leg Height (D):
         <input id="legH" type="number" value="300" onclick="this.select()">
         <div class="range">Min 200 mm</div>
     </label>
@@ -93,10 +106,10 @@
 
   <h3>Edge Banding</h3>
   <div class="edge-controls panel">
-    <label><input type="checkbox" id="bandA"> Bottom (A)</label>
-    <label><input type="checkbox" id="bandB"> Left (B)</label>
-    <label><input type="checkbox" id="bandC"> Top (C)</label>
-    <label><input type="checkbox" id="bandD"> Outer Leg (D)</label>
+    <label><input type="checkbox" id="bandBottom"> Bottom (A)</label>
+    <label><input type="checkbox" id="bandLeft"> Left (B)</label>
+    <label><input type="checkbox" id="bandTop"> Top (C)</label>
+    <label><input type="checkbox" id="bandOuterLeg"> Outer Leg (D)</label>
     <label><input type="checkbox" id="bandInnerH"> Inner Horiz</label>
     <label><input type="checkbox" id="bandInnerV"> Inner Vert</label>
   </div>
@@ -111,7 +124,7 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v2.7.1</div>
+<div id="versionLabel">v2.7.2</div>
 
 <script src="script.js"></script>
 </body>
