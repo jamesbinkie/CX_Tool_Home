@@ -54,8 +54,8 @@ function validateAndClamp() {
             r1In.value = Math.floor(r1 * f); r2In.value = Math.floor(r2 * f);
         }
     }
-    const rad3El = document.getElementById("rad3");
-    if (parseFloat(rad3El.value) < 50) rad3El.value = 50;
+    const r3 = document.getElementById("rad3");
+    if (parseFloat(r3.value) < 50) r3.value = 50;
 
     document.getElementById("radiusWarning").style.display = conflict ? "block" : "none";
     updateUI();
@@ -83,20 +83,30 @@ function drawLShape(targetCtx = null) {
     if (!targetCtx) ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const pts = getPoints(), tw = parseFloat(document.getElementById("totalW").value) || 1000, th = parseFloat(document.getElementById("totalH").value) || 800;
-    const margin = 140, scale = Math.min((canvas.width - margin * 2) / tw, (canvas.height - margin * 2) / th);
+    const margin = 140, scale = Math.min((canvas.width - margin * 2) / (tw||1), (canvas.height - margin * 2) / (th||1));
     const offX = (canvas.width - tw * scale) / 2, offY = (canvas.height - th * scale) / 2;
+
     const corners = pts.map((p, i) => ({ p, r: (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale }));
+
+    // Banding logic Mapping
+    const segChecks = [
+        document.getElementById("bandBottom").checked, document.getElementById("bandRight").checked,
+        document.getElementById("bandInternal").checked, document.getElementById("bandInternal").checked,
+        document.getElementById("bandTop").checked, document.getElementById("bandLeft").checked
+    ];
 
     const tracePath = (cArr, offset = 0) => {
         const n = cArr.length;
-        const result = [];
+        const data = [];
         for (let i = 0; i < n; i++) {
             const curr = cArr[i], next = cArr[(i + 1) % n], nn = cArr[(i + 2) % n];
             const dx = next.p[0] - curr.p[0], dy = next.p[1] - curr.p[1], l = Math.hypot(dx, dy) || 1;
             const nx = (dy / l) * offset, ny = (-dx / l) * offset;
+            
+            // For L-Shape CCW: offset radius grows if convex, shrinks if concave (idx 2)
             const effR = next.r + (i === 2 ? -offset : offset);
             
-            result.push({ 
+            data.push({ 
                 x1: (curr.p[0] + (dx/l)*(curr.r/scale)) * scale + offX + nx,
                 y1: (th - (curr.p[1] + (dy/l)*(curr.r/scale))) * scale + offY - ny,
                 x2: (next.p[0] - (dx/l)*(next.r/scale)) * scale + offX + nx,
@@ -106,18 +116,13 @@ function drawLShape(targetCtx = null) {
                 r: Math.max(0, effR)
             });
         }
-        return result;
+        return data;
     };
 
     const outline = tracePath(corners, 0);
     const banding = tracePath(corners, 12);
-    const segChecks = [
-        document.getElementById("bandBottom").checked, document.getElementById("bandRight").checked,
-        document.getElementById("bandInternal").checked, document.getElementById("bandInternal").checked,
-        document.getElementById("bandTop").checked, document.getElementById("bandLeft").checked
-    ];
 
-    // 1. Black Outline
+    // 1. Draw Black Outline
     ctx.beginPath();
     ctx.moveTo(outline[0].x1, outline[0].y1);
     outline.forEach((seg, i) => {
@@ -127,21 +132,39 @@ function drawLShape(targetCtx = null) {
     });
     ctx.closePath(); ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // 2. Red Banding
+    // 2. Draw Red Banding (Continuous logic)
     ctx.lineWidth = 4; ctx.strokeStyle = "red";
     for(let i=0; i<6; i++) {
         if (!segChecks[i]) continue;
         const b = banding[i];
+        
+        // Draw the segment
         ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
-        if (segChecks[(i+1)%6]) {
-            const next = banding[(i+1)%6];
+        
+        // Handle logic for joining at corners
+        const nextIdx = (i+1)%6;
+        const next = banding[nextIdx];
+        
+        if (segChecks[nextIdx]) {
+            // Both sides are checked -> Draw the curved or sharp joint
             ctx.beginPath(); ctx.moveTo(b.x2, b.y2);
-            ctx.arcTo(b.arcX, b.arcY, next.x1, next.y1, b.r);
+            if (b.r > 0) {
+                ctx.arcTo(b.arcX, b.arcY, next.x1, next.y1, b.r);
+            } else {
+                // Sharp 90deg corner join: extend to intersect
+                ctx.lineTo(b.arcX, b.arcY); ctx.lineTo(next.x1, next.y1);
+            }
             ctx.stroke();
+        } else {
+            // Next side is NOT checked -> If corner is rounded, draw half the arc to end cleanly
+            if (b.r > 0) {
+                ctx.beginPath(); ctx.moveTo(b.x2, b.y2);
+                ctx.arcTo(b.arcX, b.arcY, next.x1, next.y1, b.r);
+                ctx.stroke();
+            }
         }
     }
 
-    // Centered Corner Highlighter
     if (highlightedCorner !== -1 && !targetCtx) {
         const segIdx = (highlightedCorner + 5) % 6;
         const cp = outline[segIdx];
