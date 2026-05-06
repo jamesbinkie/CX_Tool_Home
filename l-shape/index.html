@@ -7,7 +7,7 @@
   <style>
     .warning-box {
       display: none;
-      background: #313338;
+      background: #313338; 
       color: #f2f3f5;
       padding: 15px;
       border-radius: 10px;
@@ -20,7 +20,6 @@
 
     .corner-grid {
       display: grid;
-      /* Spacing synchronized with main controls: 40px horizontal gap */
       grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
       gap: 25px 40px; 
       margin-top: 15px;
@@ -35,7 +34,6 @@
       min-width: auto;
     }
 
-    /* FIX: Standardized box look with fixed padding and borders */
     .corner-input-wrap input { 
       width: 100%; 
       font-size: 15px;
@@ -45,7 +43,6 @@
       color: #f2f3f5;
       border-radius: 6px;
       padding: 8px 12px;
-      box-sizing: border-box;
     }
     .corner-input-wrap input:focus { border-color: #009fe3; outline: none; }
     .range { font-size: 11px; color: #009fe3; margin-top: 4px; font-weight: normal; }
@@ -100,31 +97,38 @@
 
   <div class="panel">
     <h3>Corner Radii</h3>
-    <p style="font-size: 12px; color: #b5bac1; margin-bottom: 10px;">Hover to highlight on diagram. Corner 4 is the Internal radius.</p>
+    <p style="font-size: 12px; color: #b5bac1; margin-bottom: 10px;">Internal corner is blue. Hover to identify on diagram.</p>
     <div class="corner-grid">
         <div class="corner-input-wrap inner-corner-box" data-corner="3">
-            <label for="rad3">Corner 4 (Internal)</label>
-            <input type="number" id="rad3" value="50" min="50">
+            <label>Corner 4 (Internal)
+                <input type="number" id="rad3" value="50">
+            </label>
+            <div class="range">Min 50 mm</div>
         </div>
         <div class="corner-input-wrap" data-corner="0">
-            <label for="rad0">Corner 1</label>
-            <input type="number" id="rad0" value="0">
+            <label>Corner 1 (Bottom Left)
+                <input type="number" id="rad0" value="0">
+            </label>
         </div>
         <div class="corner-input-wrap" data-corner="1">
-            <label for="rad1">Corner 2</label>
-            <input type="number" id="rad1" value="0">
+            <label>Corner 2 (Bottom Right)
+                <input type="number" id="rad1" value="0">
+            </label>
         </div>
         <div class="corner-input-wrap" data-corner="2">
-            <label for="rad2">Corner 3</label>
-            <input type="number" id="rad2" value="0">
+            <label>Corner 3 (Right)
+                <input type="number" id="rad2" value="0">
+            </label>
         </div>
         <div class="corner-input-wrap" data-corner="4">
-            <label for="rad4">Corner 5</label>
-            <input type="number" id="rad4" value="0">
+            <label>Corner 5 (Top)
+                <input type="number" id="rad4" value="0">
+            </label>
         </div>
         <div class="corner-input-wrap" data-corner="5">
-            <label for="rad5">Corner 6</label>
-            <input type="number" id="rad5" value="0">
+            <label>Corner 6 (Top Left)
+                <input type="number" id="rad5" value="0">
+            </label>
         </div>
     </div>
   </div>
@@ -148,7 +152,7 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v2.9.1</div>
+<div id="versionLabel">v2.9.2</div>
 
 <script src="script.js"></script>
 </body>
