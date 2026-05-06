@@ -16,13 +16,16 @@
       border: 4px solid #f39c12;
       box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
+    #radiusWarning { border-color: #e74c3c; } /* Redder for geometry errors */
+
     .corner-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 15px;
+      /* FIX: Increased min-width and gap to prevent overlapping */
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 25px;
       margin-top: 15px;
     }
-    /* FIX: Standardized box look without nested borders */
+    
     .corner-input-wrap {
       display: flex;
       flex-direction: column;
@@ -31,7 +34,7 @@
     .corner-input-wrap label { 
       font-size: 12px; 
       color: #b5bac1; 
-      margin-bottom: -2px;
+      margin-bottom: 2px;
       margin-left: 5px;
       font-weight: bold;
     }
@@ -42,8 +45,7 @@
     }
     .range { font-size: 11px; color: #009fe3; margin-top: 4px; font-weight: normal; }
     
-    /* Highlight for the Internal Corner */
-    .inner-corner-box input { border-color: #009fe3 !important; box-shadow: 0 0 5px rgba(0,159,227,0.4); }
+    .inner-corner-box input { border-color: #009fe3 !important; box-shadow: 0 0 8px rgba(0,159,227,0.3); }
     .inner-corner-box label { color: #009fe3; }
   </style>
 </head>
@@ -58,7 +60,11 @@
   <h2>L-Shape Generator (mm)</h2>
 
   <div id="sheetWarning" class="warning-box">
-    ⚠️ Part exceeds maximum sheet size (2400 x 1200 mm). Values have been adjusted to fit.
+    ⚠️ Part exceeds maximum sheet size (2400 x 1200 mm). Values have been adjusted.
+  </div>
+
+  <div id="radiusWarning" class="warning-box">
+    ⚠️ Radii are too large and intersect! They have been capped to fit the side length.
   </div>
 
   <div class="controls panel">
@@ -89,11 +95,12 @@
 
   <div class="panel">
     <h3>Corner Radii</h3>
-    <p style="font-size: 12px; color: #b5bac1; margin-bottom: 10px;">Internal corner is blue. Hover to highlight on the diagram.</p>
+    <p style="font-size: 12px; color: #b5bac1; margin-bottom: 10px;">Internal corner is blue. Hover to identify on diagram.</p>
     <div class="corner-grid">
         <div class="corner-input-wrap inner-corner-box" data-corner="3">
             <label for="rad3">Corner 4 (Internal)</label>
             <input type="number" id="rad3" value="50" min="50">
+            <div class="range">Min 50 mm</div>
         </div>
         <div class="corner-input-wrap" data-corner="0">
             <label for="rad0">Corner 1</label>
@@ -138,7 +145,7 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v2.7.6</div>
+<div id="versionLabel">v2.7.7</div>
 
 <script src="script.js"></script>
 </body>
