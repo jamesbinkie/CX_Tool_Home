@@ -10,7 +10,6 @@ window.onload = () => {
             el.addEventListener("change", () => updateUI());
             if (el.tagName === "INPUT") {
                 el.addEventListener("input", () => updateUI());
-                // hard-clamp and update the numbers in the boxes on Blur
                 if (!id.startsWith("band")) el.addEventListener("blur", validateAndClamp);
             }
         }
@@ -39,42 +38,43 @@ function validateAndClamp() {
     let lw = parseFloat(lwIn.value) || minVal;
     let lh = parseFloat(lhIn.value) || minVal;
 
-    // 1. Sheet Size Logic (Consistent with Triangle Tool)
+    // 1. Sheet Size Logic
     tw = Math.max(minVal, Math.min(tw, sheetW));
     th = Math.max(minVal, Math.min(th, sheetW));
     if (tw > sheetH) th = Math.min(th, sheetH);
     else if (th > sheetH) tw = Math.min(tw, sheetH);
 
-    // 2. Leg Constraints (Legs must be at least 50mm smaller than totals)
+    // 2. Leg Constraints
     lw = Math.max(minVal, Math.min(lw, tw - 50));
     lh = Math.max(minVal, Math.min(lh, th - 50));
 
     twIn.value = Math.round(tw); thIn.value = Math.round(th);
     lwIn.value = Math.round(lw); lhIn.value = Math.round(lh);
 
-    // 3. Radius Safety Guard: The sum of two radii on one side cannot exceed that side's length.
-    // Sides are: [Bottom(A), RightEdge(D), InnerHoriz(A-C), InnerVert(B-D), TopEdge(C), LeftEdge(B)]
+    // 3. Radius Safety Guard (Prevents intersection/hook bug)
     const sideLengths = [tw, lh, (tw - lw), (th - lh), lw, th];
+    let conflict = false;
     
     for (let i = 0; i < 6; i++) {
         const r1In = document.getElementById(`rad${i}`);
         const r2In = document.getElementById(`rad${(i + 1) % 6}`);
         let r1 = parseFloat(r1In.value) || 0;
         let r2 = parseFloat(r2In.value) || 0;
-        if (i === 3 && r1 < 50) r1 = 50; // Special Internal Min
 
         const maxAvailable = sideLengths[i];
         if ((r1 + r2) > maxAvailable) {
-            const factor = maxAvailable / (r1 + r2 + 1); // 1mm safety gap
+            conflict = true;
+            const factor = maxAvailable / (r1 + r2 + 0.5);
             r1In.value = Math.floor(r1 * factor);
             r2In.value = Math.floor(r2 * factor);
         }
     }
     
-    // Final check for Internal Corner 4 min
+    // Internal Corner 4 Min 50mm
     const r3 = document.getElementById("rad3");
     if (parseFloat(r3.value) < 50) r3.value = 50;
 
+    document.getElementById("radiusWarning").style.display = conflict ? "block" : "none";
     updateUI();
 }
 
@@ -83,8 +83,7 @@ function refreshHintsAndWarnings() {
     const B = parseFloat(document.getElementById("totalH").value) || 200;
     
     const tooBig = (Math.max(A, B) > 2400 || Math.min(A, B) > 1200);
-    const warning = document.getElementById("sheetWarning");
-    if (warning) warning.style.display = tooBig ? "block" : "none";
+    document.getElementById("sheetWarning").style.display = tooBig ? "block" : "none";
 
     if (document.getElementById("rangeA")) {
         document.getElementById("rangeA").textContent = `Min 200 — Max ${B > 1200 ? 1200 : 2400} mm`;
@@ -100,7 +99,6 @@ function getPoints() {
     const C = parseFloat(document.getElementById("legW").value) || 300;
     const D = parseFloat(document.getElementById("legH").value) || 300;
     const isLeft = document.getElementById("type").value === "left";
-
     let pts = [[0, 0], [A, 0], [A, D], [C, D], [C, B], [0, B]];
     if (isLeft) pts = pts.map(p => [A - p[0], p[1]]);
     return pts;
@@ -122,10 +120,15 @@ function drawLShape(targetCtx = null) {
         return { p: p, r: r * scale };
     });
 
+    // FIX THE HOOK: Calculate exact tangent start point for Corner 0
     ctx.beginPath(); 
-    const startX = corners[0].p[0] * scale + offX; 
-    const startY = (th - corners[0].p[1]) * scale + offY + corners[0].r; 
-    ctx.moveTo(startX, startY);
+    const pPrev = corners[5].p, pCurr = corners[0].p, pNext = corners[1].p;
+    const dx = pNext[0] - pCurr[0], dy = pNext[1] - pCurr[1];
+    const len = Math.hypot(dx, dy) || 1;
+    const moveX = (pCurr[0] + (dx/len) * (corners[0].r/scale)) * scale + offX;
+    const moveY = (th - (pCurr[1] + (dy/len) * (corners[0].r/scale))) * scale + offY;
+    
+    ctx.moveTo(moveX, moveY);
 
     for (let i = 0; i < 6; i++) {
         const next = corners[(i + 1) % 6], nNext = corners[(i + 2) % 6];
@@ -136,7 +139,7 @@ function drawLShape(targetCtx = null) {
     ctx.closePath(); 
     ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // Red Edge Banding
+    // Red Edge Banding (Corrected Mapping)
     const ids = ["bandA", "bandD", "bandInnerH", "bandInnerV", "bandC", "bandB"];
     ctx.lineWidth = 3; ctx.strokeStyle = "red";
     ids.forEach((id, i) => {
