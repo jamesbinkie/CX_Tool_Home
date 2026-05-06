@@ -69,109 +69,160 @@ function refreshHintsAndWarnings() {
     document.getElementById("rangeD").textContent = `Min 200 — Max ${B - 50} mm`;
 }
 
-function getPoints() {
-    const A = parseFloat(document.getElementById("totalW").value) || 1000, B = parseFloat(document.getElementById("totalH").value) || 800, C = parseFloat(document.getElementById("legW").value) || 300, D = parseFloat(document.getElementById("legH").value) || 300;
+// THE NEW GEOMETRY ENGINE: Mathematically precise offsets
+function generatePathData(offset) {
     const isLeft = document.getElementById("type").value === "left";
-    let pts = [[0, 0], [A, 0], [A, D], [C, D], [C, B], [0, B]];
-    if (isLeft) pts = pts.map(p => [A - p[0], p[1]]);
-    return pts;
-}
+    const A = parseFloat(document.getElementById("totalW").value) || 1000;
+    const B = parseFloat(document.getElementById("totalH").value) || 800;
+    const C = parseFloat(document.getElementById("legW").value) || 300;
+    const D = parseFloat(document.getElementById("legH").value) || 300;
+    
+    const canvas = document.getElementById("canvas");
+    const margin = 140, scale = Math.min((canvas.width - margin * 2) / A, (canvas.height - margin * 2) / B);
+    const offX = (canvas.width - A * scale) / 2, offY = (canvas.height - B * scale) / 2;
 
-function intersectLines(e1, e2) {
-    const { x1, y1, x2, y2 } = e1, { x1: x3, y1: y3, x2: x4, y2: y4 } = e2;
-    const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-    if (denom === 0) return { x: x2, y: y2 };
-    return {
-        x: ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom,
-        y: ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom
-    };
+    // 1. Map raw vertex points
+    let P = [];
+    if (!isLeft) {
+        P = [
+            {x: offX, y: B*scale + offY},
+            {x: A*scale + offX, y: B*scale + offY},
+            {x: A*scale + offX, y: (B-D)*scale + offY},
+            {x: C*scale + offX, y: (B-D)*scale + offY},
+            {x: C*scale + offX, y: offY},
+            {x: offX, y: offY}
+        ];
+    } else {
+        P = [
+            {x: A*scale + offX, y: B*scale + offY},
+            {x: offX, y: B*scale + offY},
+            {x: offX, y: (B-D)*scale + offY},
+            {x: (A-C)*scale + offX, y: (B-D)*scale + offY},
+            {x: (A-C)*scale + offX, y: offY},
+            {x: A*scale + offX, y: offY}
+        ];
+    }
+
+    // 2. Define strict outward normal vectors for all 6 edges
+    let N = [];
+    if (!isLeft) N = [{x:0,y:1}, {x:1,y:0}, {x:0,y:-1}, {x:1,y:0}, {x:0,y:-1}, {x:-1,y:0}];
+    else N = [{x:0,y:1}, {x:-1,y:0}, {x:0,y:-1}, {x:-1,y:0}, {x:0,y:-1}, {x:1,y:0}];
+
+    // 3. Find precise offset corner intersections
+    let C_off = [];
+    for(let i=0; i<6; i++) {
+        let prevN = N[(i+5)%6];
+        let currN = N[i];
+        C_off.push({
+            x: P[i].x + (prevN.x !== 0 ? prevN.x : currN.x) * offset,
+            y: P[i].y + (prevN.y !== 0 ? prevN.y : currN.y) * offset
+        });
+    }
+
+    // 4. Determine segment directions
+    let dir = [];
+    for(let i=0; i<6; i++) {
+        let dx = C_off[(i+1)%6].x - C_off[i].x;
+        let dy = C_off[(i+1)%6].y - C_off[i].y;
+        let len = Math.hypot(dx, dy) || 1;
+        dir.push({x: dx/len, y: dy/len});
+    }
+
+    // 5. Construct full geometry including arcs
+    let corners = [];
+    for(let i=0; i<6; i++) {
+        let R_orig = (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale;
+        let R_off = R_orig;
+        
+        // Internal concave corner (idx 3) shrinks on offset, convex ones grow
+        if (R_orig > 0) {
+            R_off = R_orig + (i === 3 ? -offset : offset);
+            R_off = Math.max(0, R_off);
+        }
+
+        corners.push({
+            C: C_off[i],
+            R_off: R_off,
+            P_start: { x: C_off[i].x - dir[(i+5)%6].x * R_off, y: C_off[i].y - dir[(i+5)%6].y * R_off },
+            P_end: { x: C_off[i].x + dir[i].x * R_off, y: C_off[i].y + dir[i].y * R_off }
+        });
+    }
+
+    return { corners, scale, offX, offY, th: B };
 }
 
 function drawLShape(targetCtx = null) {
     const canvas = document.getElementById("canvas"), ctx = targetCtx || canvas.getContext("2d");
     if (!targetCtx) ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const pts = getPoints(), tw = parseFloat(document.getElementById("totalW").value) || 1000, th = parseFloat(document.getElementById("totalH").value) || 800;
-    const margin = 140, scale = Math.min((canvas.width - margin * 2) / (tw||1), (canvas.height - margin * 2) / (th||1));
-    const offX = (canvas.width - tw * scale) / 2, offY = (canvas.height - th * scale) / 2;
-    const isLeft = document.getElementById("type").value === "left";
+    const outlineData = generatePathData(0);
+    const bandingData = generatePathData(12);
 
-    // Map exact sharp corner coordinates
-    const corners = pts.map((p, i) => ({
-        x: p[0] * scale + offX,
-        y: (th - p[1]) * scale + offY,
-        r: (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale
-    }));
-
-    // 1. Draw Clean Black Outline
+    // 1. Draw Master Outline
     ctx.beginPath();
-    // Starting in the middle of a straight line ensures arcTo connects the whole loop seamlessly
-    const mX = (corners[5].x + corners[0].x) / 2;
-    const mY = (corners[5].y + corners[0].y) / 2;
-    ctx.moveTo(mX, mY);
-    for(let i=0; i<6; i++) {
-        const c = corners[i], n = corners[(i+1)%6];
-        ctx.arcTo(c.x, c.y, n.x, n.y, c.r);
+    ctx.moveTo(outlineData.corners[0].P_end.x, outlineData.corners[0].P_end.y);
+    for(let i=1; i<=6; i++) {
+        let c = outlineData.corners[i%6];
+        ctx.lineTo(c.P_start.x, c.P_start.y);
+        if (c.R_off > 0) ctx.arcTo(c.C.x, c.C.y, c.P_end.x, c.P_end.y, c.R_off);
     }
     ctx.closePath();
     ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // 2. Draw Continuous Red Banding
+    // 2. Draw Colored Sectional Banding
     if (document.getElementById("bandAll").checked) {
-        const offset = 12; // Gap thickness in pixels
-        const offCorners = [];
+        const colors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"];
         
-        // Mathematically push every line segment out by 12px and find new intersections
+        // Find a sharp 90-deg corner to start drawing the first section from
+        let startIndex = 0;
         for(let i=0; i<6; i++) {
-            const prev = corners[(i+5)%6], curr = corners[i], next = corners[(i+1)%6];
-            
-            const dx1 = curr.x - prev.x, dy1 = curr.y - prev.y, l1 = Math.hypot(dx1, dy1) || 1;
-            const dx2 = next.x - curr.x, dy2 = next.y - curr.y, l2 = Math.hypot(dx2, dy2) || 1;
-
-            // Outward normals for L-Shapes (Left vs Right orientation logic)
-            let nx1, ny1, nx2, ny2;
-            if (isLeft) { 
-                nx1 = dy1/l1; ny1 = -dx1/l1; nx2 = dy2/l2; ny2 = -dx2/l2;
-            } else { 
-                nx1 = -dy1/l1; ny1 = dx1/l1; nx2 = -dy2/l2; ny2 = dx2/l2;
-            }
-
-            const line1 = { x1: prev.x + nx1*offset, y1: prev.y + ny1*offset, x2: curr.x + nx1*offset, y2: curr.y + ny1*offset };
-            const line2 = { x1: curr.x + nx2*offset, y1: curr.y + ny2*offset, x2: next.x + nx2*offset, y2: next.y + ny2*offset };
-
-            const inter = intersectLines(line1, line2);
-
-            // Inner Corner (idx 3) is concave, so its offset radius SHRINKS. Convex corners GROW.
-            let effR = curr.r + (i === 3 ? -offset : offset);
-            if (effR < 0) effR = 0; // Prevent negative radius crash
-
-            offCorners.push({ x: inter.x, y: inter.y, r: effR });
+            if (bandingData.corners[i].R_off === 0) { startIndex = i; break; }
         }
 
-        // Draw perfectly parallel loop
+        let currColorIdx = 0;
         ctx.beginPath();
-        const oMX = (offCorners[5].x + offCorners[0].x) / 2;
-        const oMY = (offCorners[5].y + offCorners[0].y) / 2;
-        ctx.moveTo(oMX, oMY);
-        for(let i=0; i<6; i++) {
-            const c = offCorners[i], n = offCorners[(i+1)%6];
-            ctx.arcTo(c.x, c.y, n.x, n.y, c.r);
+        ctx.moveTo(bandingData.corners[startIndex].P_end.x, bandingData.corners[startIndex].P_end.y);
+        ctx.strokeStyle = colors[currColorIdx];
+        ctx.lineWidth = 4;
+
+        for(let step=1; step<=6; step++) {
+            let i = (startIndex + step) % 6;
+            let c = bandingData.corners[i];
+            
+            // Draw line to the start of the corner
+            ctx.lineTo(c.P_start.x, c.P_start.y);
+
+            if (c.R_off > 0) {
+                // Smooth Corner: Continue the same colored line through the arc
+                ctx.arcTo(c.C.x, c.C.y, c.P_end.x, c.P_end.y, c.R_off);
+            } else {
+                // Sharp Corner: End the line exactly at the vertex point
+                ctx.lineTo(c.C.x, c.C.y);
+                ctx.stroke();
+
+                // Swap colors and begin new section if not the last step
+                if (step < 6) {
+                    currColorIdx++;
+                    ctx.beginPath();
+                    ctx.moveTo(c.C.x, c.C.y);
+                    ctx.strokeStyle = colors[currColorIdx % colors.length];
+                    ctx.lineWidth = 4;
+                }
+            }
         }
-        ctx.closePath();
-        ctx.lineWidth = 4; ctx.strokeStyle = "red"; ctx.stroke();
+        ctx.stroke(); // Ensure the final line closes
     }
 
-    // Highlighter
     if (highlightedCorner !== -1 && !targetCtx) {
-        const c = corners[highlightedCorner];
-        ctx.beginPath(); ctx.arc(c.x, c.y, 20, 0, Math.PI * 2); 
-        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
+        const cp = outlineData.corners[highlightedCorner];
+        ctx.beginPath(); ctx.arc(cp.C.x, cp.C.y, 25, 0, Math.PI * 2); 
+        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 3; ctx.stroke();
     }
     
-    if (!targetCtx) drawLDimensions(ctx, pts, scale, offX, offY, th);
+    if (!targetCtx) drawLDimensions(ctx, outlineData.scale, outlineData.offX, outlineData.offY, outlineData.th);
 }
 
-function drawLDimensions(ctx, pts, scale, offX, offY, th) {
+function drawLDimensions(ctx, scale, offX, offY, th) {
     ctx.font = "bold 18px Segoe UI, Arial"; ctx.fillStyle = "#000"; ctx.textAlign = "center";
     const A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value), C = parseFloat(document.getElementById("legW").value), D = parseFloat(document.getElementById("legH").value);
     const isLeft = document.getElementById("type").value === "left";
@@ -202,9 +253,17 @@ function downloadPNG() {
 }
 
 function downloadDXF() {
-    const pts = getPoints(), th = parseFloat(document.getElementById("totalH").value);
+    const isLeft = document.getElementById("type").value === "left";
+    const A = parseFloat(document.getElementById("totalW").value) || 1000;
+    const B = parseFloat(document.getElementById("totalH").value) || 800;
+    const C = parseFloat(document.getElementById("legW").value) || 300;
+    const D = parseFloat(document.getElementById("legH").value) || 300;
+    
+    let pts = [[0, 0], [A, 0], [A, D], [C, D], [C, B], [0, B]];
+    if (isLeft) pts = pts.map(p => [A - p[0], p[1]]);
+
     let dxf = ["  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES", "  0", "POLYLINE", "  8", "0", " 66", "1", " 70", "1"];
-    pts.forEach(p => dxf.push("  0", "VERTEX", "  8", "0", " 10", p[0].toFixed(4), " 20", (th - p[1]).toFixed(4)));
+    pts.forEach(p => dxf.push("  0", "VERTEX", "  8", "0", " 10", p[0].toFixed(4), " 20", (B - p[1]).toFixed(4)));
     dxf.push("  0", "SEQEND", "  0", "ENDSEC", "  0", "EOF");
     const blob = new Blob([dxf.join("\r\n")], { type: "application/dxf" });
     const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = (document.getElementById("fileName").value || "l_shape") + ".dxf"; link.click();
