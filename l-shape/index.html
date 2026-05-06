@@ -16,13 +16,13 @@
       border: 4px solid #f39c12;
       box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
-    #radiusWarning { border-color: #e74c3c; } /* Redder for geometry errors */
+    #radiusWarning { border-color: #e74c3c; }
 
     .corner-grid {
       display: grid;
-      /* FIX: Increased min-width and gap to prevent overlapping */
+      /* Spacing synchronized with main controls: 40px horizontal gap */
       grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 25px;
+      gap: 25px 40px; 
       margin-top: 15px;
     }
     
@@ -34,7 +34,7 @@
     .corner-input-wrap label { 
       font-size: 12px; 
       color: #b5bac1; 
-      margin-bottom: 2px;
+      margin-bottom: -2px;
       margin-left: 5px;
       font-weight: bold;
     }
@@ -145,7 +145,7 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v2.7.7</div>
+<div id="versionLabel">v2.8.0</div>
 
 <script src="script.js"></script>
 </body>
