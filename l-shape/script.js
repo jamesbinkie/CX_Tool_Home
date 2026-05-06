@@ -2,7 +2,7 @@ let highlightedCorner = -1;
 
 window.onload = () => {
     const ids = ["type", "totalW", "totalH", "legW", "legH", "rad0", "rad1", "rad2", "rad3", "rad4", "rad5",
-                 "bandA", "bandB", "bandC", "bandD", "bandInternal"];
+                 "bandBottom", "bandRight", "bandInternal", "bandTop", "bandLeft"];
     
     ids.forEach(id => {
         const el = document.getElementById(id);
@@ -33,31 +33,30 @@ function validateAndClamp() {
     let tw = parseFloat(twIn.value) || minVal, th = parseFloat(thIn.value) || minVal;
     let lw = parseFloat(lwIn.value) || minVal, lh = parseFloat(lhIn.value) || minVal;
 
-    // Sheet Limit Logic
     tw = Math.max(minVal, Math.min(tw, sheetW));
     th = Math.max(minVal, Math.min(th, sheetW));
     if (tw > sheetH) th = Math.min(th, sheetH); else if (th > sheetH) tw = Math.min(tw, sheetH);
 
-    // Leg Logic
     lw = Math.max(minVal, Math.min(lw, tw - 50));
     lh = Math.max(minVal, Math.min(lh, th - 50));
 
     twIn.value = Math.round(tw); thIn.value = Math.round(th);
     lwIn.value = Math.round(lw); lhIn.value = Math.round(lh);
 
-    // Radius Conflict Guard
-    const sides = [tw, lh, (tw - lw), (th - lh), lw, th];
+    const sideLengths = [tw, lh, (tw - lw), (th - lh), lw, th];
     let conflict = false;
     for (let i = 0; i < 6; i++) {
         const r1In = document.getElementById(`rad${i}`), r2In = document.getElementById(`rad${(i + 1) % 6}`);
         let r1 = parseFloat(r1In.value) || 0, r2 = parseFloat(r2In.value) || 0;
-        if ((r1 + r2) > sides[i]) {
+        if ((r1 + r2) > sideLengths[i]) {
             conflict = true;
-            const factor = sides[i] / (r1 + r2 + 1);
-            r1In.value = Math.floor(r1 * factor); r2In.value = Math.floor(r2 * factor);
+            const f = sideLengths[i] / (r1 + r2 + 1);
+            r1In.value = Math.floor(r1 * f); r2In.value = Math.floor(r2 * f);
         }
     }
-    if (parseFloat(document.getElementById("rad3").value) < 50) document.getElementById("rad3").value = 50;
+    const rad3El = document.getElementById("rad3");
+    if (parseFloat(rad3El.value) < 50) rad3El.value = 50;
+
     document.getElementById("radiusWarning").style.display = conflict ? "block" : "none";
     updateUI();
 }
@@ -88,27 +87,14 @@ function drawLShape(targetCtx = null) {
     const offX = (canvas.width - tw * scale) / 2, offY = (canvas.height - th * scale) / 2;
     const corners = pts.map((p, i) => ({ p, r: (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale }));
 
-    // Define banding logic segments
-    const segChecks = [
-        document.getElementById("bandA").checked,
-        document.getElementById("bandD").checked,
-        document.getElementById("bandInternal").checked,
-        document.getElementById("bandInternal").checked,
-        document.getElementById("bandC").checked,
-        document.getElementById("bandB").checked
-    ];
-
     const tracePath = (cArr, offset = 0) => {
         const n = cArr.length;
         const result = [];
         for (let i = 0; i < n; i++) {
             const curr = cArr[i], next = cArr[(i + 1) % n], nn = cArr[(i + 2) % n];
             const dx = next.p[0] - curr.p[0], dy = next.p[1] - curr.p[1], l = Math.hypot(dx, dy) || 1;
-            // Outward normal
-            const nx = dy / l * offset, ny = -dx / l * offset;
-            
-            // Adjust radius for offset: convex corners grow, concave corner (i=2) shrinks
-            const effectiveR = next.r + (i === 2 ? -offset : offset);
+            const nx = (dy / l) * offset, ny = (-dx / l) * offset;
+            const effR = next.r + (i === 2 ? -offset : offset);
             
             result.push({ 
                 x1: (curr.p[0] + (dx/l)*(curr.r/scale)) * scale + offX + nx,
@@ -117,8 +103,7 @@ function drawLShape(targetCtx = null) {
                 y2: (th - (next.p[1] - (dy/l)*(next.r/scale))) * scale + offY - ny,
                 arcX: next.p[0]*scale + offX + nx,
                 arcY: (th - next.p[1])*scale + offY - ny,
-                targetX: (next.p[0] + ((nn.p[0]-next.p[0])/Math.hypot(nn.p[0]-next.p[0], nn.p[1]-next.p[1]) || 0)*(nn.r/scale))*scale + offX,
-                r: Math.max(0, effectiveR)
+                r: Math.max(0, effR)
             });
         }
         return result;
@@ -126,8 +111,13 @@ function drawLShape(targetCtx = null) {
 
     const outline = tracePath(corners, 0);
     const banding = tracePath(corners, 12);
+    const segChecks = [
+        document.getElementById("bandBottom").checked, document.getElementById("bandRight").checked,
+        document.getElementById("bandInternal").checked, document.getElementById("bandInternal").checked,
+        document.getElementById("bandTop").checked, document.getElementById("bandLeft").checked
+    ];
 
-    // 1. Draw Outline
+    // 1. Black Outline
     ctx.beginPath();
     ctx.moveTo(outline[0].x1, outline[0].y1);
     outline.forEach((seg, i) => {
@@ -137,13 +127,12 @@ function drawLShape(targetCtx = null) {
     });
     ctx.closePath(); ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // 2. Draw Banding
+    // 2. Red Banding
     ctx.lineWidth = 4; ctx.strokeStyle = "red";
     for(let i=0; i<6; i++) {
         if (!segChecks[i]) continue;
         const b = banding[i];
         ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
-        
         if (segChecks[(i+1)%6]) {
             const next = banding[(i+1)%6];
             ctx.beginPath(); ctx.moveTo(b.x2, b.y2);
@@ -152,9 +141,12 @@ function drawLShape(targetCtx = null) {
         }
     }
 
+    // Centered Corner Highlighter
     if (highlightedCorner !== -1 && !targetCtx) {
-        const c = outline[highlightedCorner];
-        ctx.beginPath(); ctx.arc(c.arcX, c.arcY, 25, 0, Math.PI * 2); ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 3; ctx.stroke();
+        const segIdx = (highlightedCorner + 5) % 6;
+        const cp = outline[segIdx];
+        ctx.beginPath(); ctx.arc(cp.arcX, cp.arcY, 25, 0, Math.PI * 2); 
+        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 3; ctx.stroke();
     }
     if (!targetCtx) drawLDimensions(ctx, pts, scale, offX, offY, th);
 }
