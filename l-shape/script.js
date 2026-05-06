@@ -9,7 +9,8 @@ window.onload = () => {
             el.addEventListener("change", () => updateUI());
             if (el.tagName === "INPUT") {
                 el.addEventListener("input", () => updateUI());
-                if (id !== "bandAll") el.addEventListener("blur", validateAndClamp);
+                // Pass event to validate function to know WHICH box was edited
+                if (id !== "bandAll") el.addEventListener("blur", (e) => validateAndClamp(e));
             }
         }
     });
@@ -24,7 +25,7 @@ window.onload = () => {
 
 function updateUI() { refreshHintsAndWarnings(); drawLShape(); }
 
-function validateAndClamp() {
+function validateAndClamp(e = null) {
     const minVal = 200, sheetW = 2400, sheetH = 1200;
     const twIn = document.getElementById("totalW"), thIn = document.getElementById("totalH");
     const lwIn = document.getElementById("legW"), lhIn = document.getElementById("legH");
@@ -44,15 +45,26 @@ function validateAndClamp() {
 
     const sideLengths = [tw, lh, (tw - lw), (th - lh), lw, th];
     let conflict = false;
+    
     for (let i = 0; i < 6; i++) {
-        const r1In = document.getElementById(`rad${i}`), r2In = document.getElementById(`rad${(i + 1) % 6}`);
+        const r1In = document.getElementById(`rad${i}`);
+        const r2In = document.getElementById(`rad${(i + 1) % 6}`);
         let r1 = parseFloat(r1In.value) || 0, r2 = parseFloat(r2In.value) || 0;
+        
         if ((r1 + r2) > sideLengths[i]) {
             conflict = true;
-            const factor = sideLengths[i] / (r1 + r2 + 0.1);
-            r1In.value = Math.floor(r1 * factor); r2In.value = Math.floor(r2 * factor);
+            // FIX: Only cap the box the user just typed in, preserve the other radius
+            if (e && e.target === r1In) {
+                r1In.value = Math.max(0, Math.floor(sideLengths[i] - r2));
+            } else if (e && e.target === r2In) {
+                r2In.value = Math.max(0, Math.floor(sideLengths[i] - r1));
+            } else {
+                const factor = sideLengths[i] / (r1 + r2 + 0.1);
+                r1In.value = Math.floor(r1 * factor); r2In.value = Math.floor(r2 * factor);
+            }
         }
     }
+    
     const r3El = document.getElementById("rad3");
     if (parseFloat(r3El.value) < 50) r3El.value = 50;
 
@@ -69,157 +81,147 @@ function refreshHintsAndWarnings() {
     document.getElementById("rangeD").textContent = `Min 200 — Max ${B - 50} mm`;
 }
 
-// THE NEW GEOMETRY ENGINE: Mathematically precise offsets
+function getPoints() {
+    const A = parseFloat(document.getElementById("totalW").value) || 1000, B = parseFloat(document.getElementById("totalH").value) || 800, C = parseFloat(document.getElementById("legW").value) || 300, D = parseFloat(document.getElementById("legH").value) || 300;
+    const isLeft = document.getElementById("type").value === "left";
+    let pts = [[0, 0], [A, 0], [A, D], [C, D], [C, B], [0, B]];
+    if (isLeft) pts = pts.map(p => [A - p[0], p[1]]);
+    return pts;
+}
+
+// MATH ENGINE: Calculates mathematically perfect parallel offsets
 function generatePathData(offset) {
     const isLeft = document.getElementById("type").value === "left";
+    const sign = isLeft ? -1 : 1;
+    
     const A = parseFloat(document.getElementById("totalW").value) || 1000;
     const B = parseFloat(document.getElementById("totalH").value) || 800;
-    const C = parseFloat(document.getElementById("legW").value) || 300;
-    const D = parseFloat(document.getElementById("legH").value) || 300;
     
     const canvas = document.getElementById("canvas");
     const margin = 140, scale = Math.min((canvas.width - margin * 2) / A, (canvas.height - margin * 2) / B);
     const offX = (canvas.width - A * scale) / 2, offY = (canvas.height - B * scale) / 2;
 
-    // 1. Map raw vertex points
-    let P = [];
-    if (!isLeft) {
-        P = [
-            {x: offX, y: B*scale + offY},
-            {x: A*scale + offX, y: B*scale + offY},
-            {x: A*scale + offX, y: (B-D)*scale + offY},
-            {x: C*scale + offX, y: (B-D)*scale + offY},
-            {x: C*scale + offX, y: offY},
-            {x: offX, y: offY}
-        ];
-    } else {
-        P = [
-            {x: A*scale + offX, y: B*scale + offY},
-            {x: offX, y: B*scale + offY},
-            {x: offX, y: (B-D)*scale + offY},
-            {x: (A-C)*scale + offX, y: (B-D)*scale + offY},
-            {x: (A-C)*scale + offX, y: offY},
-            {x: A*scale + offX, y: offY}
-        ];
-    }
+    const pts = getPoints();
+    const cArr = pts.map((p, i) => ({ 
+        x: p[0] * scale + offX, 
+        y: (B - p[1]) * scale + offY, 
+        r: (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale 
+    }));
 
-    // 2. Define strict outward normal vectors for all 6 edges
-    let N = [];
-    if (!isLeft) N = [{x:0,y:1}, {x:1,y:0}, {x:0,y:-1}, {x:1,y:0}, {x:0,y:-1}, {x:-1,y:0}];
-    else N = [{x:0,y:1}, {x:-1,y:0}, {x:0,y:-1}, {x:-1,y:0}, {x:0,y:-1}, {x:1,y:0}];
+    const data = [];
+    const n = 6;
+    for (let i = 0; i < n; i++) {
+        const prev = cArr[(i + 5) % n], curr = cArr[i], next = cArr[(i + 1) % n];
 
-    // 3. Find precise offset corner intersections
-    let C_off = [];
-    for(let i=0; i<6; i++) {
-        let prevN = N[(i+5)%6];
-        let currN = N[i];
-        C_off.push({
-            x: P[i].x + (prevN.x !== 0 ? prevN.x : currN.x) * offset,
-            y: P[i].y + (prevN.y !== 0 ? prevN.y : currN.y) * offset
-        });
-    }
+        const dx1 = curr.x - prev.x, dy1 = curr.y - prev.y, l1 = Math.hypot(dx1, dy1) || 1;
+        const v1_x = dx1/l1, v1_y = dy1/l1;
 
-    // 4. Determine segment directions
-    let dir = [];
-    for(let i=0; i<6; i++) {
-        let dx = C_off[(i+1)%6].x - C_off[i].x;
-        let dy = C_off[(i+1)%6].y - C_off[i].y;
-        let len = Math.hypot(dx, dy) || 1;
-        dir.push({x: dx/len, y: dy/len});
-    }
+        const dx2 = next.x - curr.x, dy2 = next.y - curr.y, l2 = Math.hypot(dx2, dy2) || 1;
+        const v2_x = dx2/l2, v2_y = dy2/l2;
 
-    // 5. Construct full geometry including arcs
-    let corners = [];
-    for(let i=0; i<6; i++) {
-        let R_orig = (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale;
-        let R_off = R_orig;
-        
-        // Internal concave corner (idx 3) shrinks on offset, convex ones grow
-        if (R_orig > 0) {
-            R_off = R_orig + (i === 3 ? -offset : offset);
-            R_off = Math.max(0, R_off);
+        // Outward normals
+        const N1_out = { x: -v1_y * sign, y: v1_x * sign };
+        const N2_out = { x: -v2_y * sign, y: v2_x * sign };
+
+        const cross = v1_x * v2_y - v1_y * v2_x;
+        const isConcave = (cross * sign) > 0;
+
+        const R = curr.r;
+        const R_off = Math.max(0, R + (isConcave ? -offset : offset));
+
+        const C_off = {
+            x: curr.x + N1_out.x * offset + N2_out.x * offset,
+            y: curr.y + N1_out.y * offset + N2_out.y * offset
+        };
+
+        let StartPt, EndPt;
+        if (R_off > 0) {
+            const Center_orig = isConcave ?
+                { x: curr.x + N1_out.x * R + N2_out.x * R, y: curr.y + N1_out.y * R + N2_out.y * R } :
+                { x: curr.x - N1_out.x * R - N2_out.x * R, y: curr.y - N1_out.y * R - N2_out.y * R };
+            
+            if (!isConcave) {
+                StartPt = { x: Center_orig.x + N1_out.x * R_off, y: Center_orig.y + N1_out.y * R_off };
+                EndPt   = { x: Center_orig.x + N2_out.x * R_off, y: Center_orig.y + N2_out.y * R_off };
+            } else {
+                StartPt = { x: Center_orig.x - N1_out.x * R_off, y: Center_orig.y - N1_out.y * R_off };
+                EndPt   = { x: Center_orig.x - N2_out.x * R_off, y: Center_orig.y - N2_out.y * R_off };
+            }
+        } else {
+            StartPt = C_off; EndPt = C_off;
         }
 
-        corners.push({
-            C: C_off[i],
-            R_off: R_off,
-            P_start: { x: C_off[i].x - dir[(i+5)%6].x * R_off, y: C_off[i].y - dir[(i+5)%6].y * R_off },
-            P_end: { x: C_off[i].x + dir[i].x * R_off, y: C_off[i].y + dir[i].y * R_off }
-        });
+        data.push({ StartPt, EndPt, C_off, R_off, r_orig: R });
     }
-
-    return { corners, scale, offX, offY, th: B };
+    return { data, scale, offX, offY, th: B };
 }
 
 function drawLShape(targetCtx = null) {
     const canvas = document.getElementById("canvas"), ctx = targetCtx || canvas.getContext("2d");
     if (!targetCtx) ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const outlineData = generatePathData(0);
-    const bandingData = generatePathData(12);
-
-    // 1. Draw Master Outline
+    const outline = generatePathData(0);
+    
+    // 1. Draw Black Outline
     ctx.beginPath();
-    ctx.moveTo(outlineData.corners[0].P_end.x, outlineData.corners[0].P_end.y);
+    ctx.moveTo(outline.data[0].EndPt.x, outline.data[0].EndPt.y);
     for(let i=1; i<=6; i++) {
-        let c = outlineData.corners[i%6];
-        ctx.lineTo(c.P_start.x, c.P_start.y);
-        if (c.R_off > 0) ctx.arcTo(c.C.x, c.C.y, c.P_end.x, c.P_end.y, c.R_off);
+        const seg = outline.data[i%6];
+        ctx.lineTo(seg.StartPt.x, seg.StartPt.y);
+        if (seg.R_off > 0) ctx.arcTo(seg.C_off.x, seg.C_off.y, seg.EndPt.x, seg.EndPt.y, seg.R_off);
     }
     ctx.closePath();
     ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // 2. Draw Colored Sectional Banding
+    // 2. Colored Sectional Banding
     if (document.getElementById("bandAll").checked) {
-        const colors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"];
+        const banding = generatePathData(12);
+        const colors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"]; // Red, Blue, Green, Yellow, Purple, Orange
         
-        // Find a sharp 90-deg corner to start drawing the first section from
-        let startIndex = 0;
-        for(let i=0; i<6; i++) {
-            if (bandingData.corners[i].R_off === 0) { startIndex = i; break; }
-        }
+        // Find a sharp corner to act as the start point of Section 1
+        let startIdx = 0;
+        for(let i=0; i<6; i++) if (banding.data[i].r_orig === 0) { startIdx = i; break; }
 
-        let currColorIdx = 0;
+        let colorIdx = 0;
         ctx.beginPath();
-        ctx.moveTo(bandingData.corners[startIndex].P_end.x, bandingData.corners[startIndex].P_end.y);
-        ctx.strokeStyle = colors[currColorIdx];
+        ctx.moveTo(banding.data[startIdx].EndPt.x, banding.data[startIdx].EndPt.y);
+        ctx.strokeStyle = colors[colorIdx];
         ctx.lineWidth = 4;
 
         for(let step=1; step<=6; step++) {
-            let i = (startIndex + step) % 6;
-            let c = bandingData.corners[i];
-            
-            // Draw line to the start of the corner
-            ctx.lineTo(c.P_start.x, c.P_start.y);
+            let i = (startIdx + step) % 6;
+            let b = banding.data[i];
 
-            if (c.R_off > 0) {
-                // Smooth Corner: Continue the same colored line through the arc
-                ctx.arcTo(c.C.x, c.C.y, c.P_end.x, c.P_end.y, c.R_off);
+            ctx.lineTo(b.StartPt.x, b.StartPt.y);
+
+            if (b.r_orig > 0) {
+                // Smooth Corner: Wrap around with the same color
+                if (b.R_off > 0) ctx.arcTo(b.C_off.x, b.C_off.y, b.EndPt.x, b.EndPt.y, b.R_off);
+                else ctx.lineTo(b.C_off.x, b.C_off.y);
             } else {
-                // Sharp Corner: End the line exactly at the vertex point
-                ctx.lineTo(c.C.x, c.C.y);
+                // Sharp 90deg Corner: End the section and change color
+                ctx.lineTo(b.C_off.x, b.C_off.y);
                 ctx.stroke();
 
-                // Swap colors and begin new section if not the last step
                 if (step < 6) {
-                    currColorIdx++;
+                    colorIdx++;
                     ctx.beginPath();
-                    ctx.moveTo(c.C.x, c.C.y);
-                    ctx.strokeStyle = colors[currColorIdx % colors.length];
+                    ctx.moveTo(b.C_off.x, b.C_off.y);
+                    ctx.strokeStyle = colors[colorIdx % colors.length];
                     ctx.lineWidth = 4;
                 }
             }
         }
-        ctx.stroke(); // Ensure the final line closes
+        ctx.stroke(); // Closes final path
     }
 
     if (highlightedCorner !== -1 && !targetCtx) {
-        const cp = outlineData.corners[highlightedCorner];
-        ctx.beginPath(); ctx.arc(cp.C.x, cp.C.y, 25, 0, Math.PI * 2); 
-        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 3; ctx.stroke();
+        const cp = outline.data[highlightedCorner];
+        ctx.beginPath(); ctx.arc(cp.C_off.x, cp.C_off.y, 20, 0, Math.PI * 2); 
+        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
     }
     
-    if (!targetCtx) drawLDimensions(ctx, outlineData.scale, outlineData.offX, outlineData.offY, outlineData.th);
+    if (!targetCtx) drawLDimensions(ctx, outline.scale, outline.offX, outline.offY, outline.th);
 }
 
 function drawLDimensions(ctx, scale, offX, offY, th) {
@@ -254,14 +256,9 @@ function downloadPNG() {
 
 function downloadDXF() {
     const isLeft = document.getElementById("type").value === "left";
-    const A = parseFloat(document.getElementById("totalW").value) || 1000;
-    const B = parseFloat(document.getElementById("totalH").value) || 800;
-    const C = parseFloat(document.getElementById("legW").value) || 300;
-    const D = parseFloat(document.getElementById("legH").value) || 300;
-    
+    const A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value), C = parseFloat(document.getElementById("legW").value), D = parseFloat(document.getElementById("legH").value);
     let pts = [[0, 0], [A, 0], [A, D], [C, D], [C, B], [0, B]];
     if (isLeft) pts = pts.map(p => [A - p[0], p[1]]);
-
     let dxf = ["  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES", "  0", "POLYLINE", "  8", "0", " 66", "1", " 70", "1"];
     pts.forEach(p => dxf.push("  0", "VERTEX", "  8", "0", " 10", p[0].toFixed(4), " 20", (B - p[1]).toFixed(4)));
     dxf.push("  0", "SEQEND", "  0", "ENDSEC", "  0", "EOF");
