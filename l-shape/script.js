@@ -2,7 +2,7 @@ let highlightedCorner = -1;
 
 window.onload = () => {
     const ids = ["type", "totalW", "totalH", "legW", "legH", "rad0", "rad1", "rad2", "rad3", "rad4", "rad5",
-                 "bandA", "bandB", "bandC", "bandD", "bandInnerH", "bandInnerV"];
+                 "bandBottom", "bandLeft", "bandTop", "bandOuterLeg", "bandInnerH", "bandInnerV"];
     
     ids.forEach(id => {
         const el = document.getElementById(id);
@@ -10,8 +10,7 @@ window.onload = () => {
             el.addEventListener("change", updateUI);
             if (el.tagName === "INPUT") {
                 el.addEventListener("input", updateUI);
-                if (!id.startsWith("band") && !id.startsWith("rad")) el.addEventListener("blur", validateAndClamp);
-                if (id.startsWith("rad")) el.addEventListener("blur", updateUI);
+                if (!id.startsWith("band")) el.addEventListener("blur", validateAndClamp);
             }
         }
     });
@@ -38,15 +37,16 @@ function validateAndClamp() {
     let lw = parseFloat(document.getElementById("legW").value) || minVal;
     let lh = parseFloat(document.getElementById("legH").value) || minVal;
 
-    // Sheet Limit Logic
     tw = Math.max(minVal, Math.min(tw, maxSheetDim));
     th = Math.max(minVal, Math.min(th, maxSheetDim));
     if (tw > midSheetDim) th = Math.min(th, midSheetDim);
     else if (th > midSheetDim) tw = Math.min(tw, midSheetDim);
 
-    // Leg Constraint: Leg must be smaller than Total
     lw = Math.max(minVal, Math.min(lw, tw - 50));
     lh = Math.max(minVal, Math.min(lh, th - 50));
+
+    const r3 = document.getElementById("rad3");
+    if (parseFloat(r3.value) < 50) r3.value = 50;
 
     document.getElementById("totalW").value = tw;
     document.getElementById("totalH").value = th;
@@ -68,7 +68,6 @@ function getPoints() {
     const D = parseFloat(document.getElementById("legH").value) || 300;
     const isLeft = document.getElementById("type").value === "left";
 
-    // P0-P5 for a Right-Oriented L
     let pts = [[0, 0], [A, 0], [A, D], [C, D], [C, B], [0, B]];
     if (isLeft) pts = pts.map(p => [A - p[0], p[1]]);
     return pts;
@@ -84,15 +83,18 @@ function drawLShape(targetCtx = null) {
     const margin = 140, scale = Math.min((canvas.width - margin * 2) / tw, (canvas.height - margin * 2) / th);
     const offX = (canvas.width - tw * scale) / 2, offY = (canvas.height - th * scale) / 2;
 
-    // Individual Corner Radii from Inputs
-    let rads = [0, 1, 2, 3, 4, 5].map(i => {
+    const corners = pts.map((p, i) => {
         let r = parseFloat(document.getElementById(`rad${i}`).value) || 0;
-        if (i === 3 && r < 50) r = 50; // Inner Corner Min 50
-        return r;
-    });
+        if (i === 3 && r < 50) r = 50;
+        
+        // Safety Clamp: Radius cannot be more than 45% of adjacent side lengths to prevent overlapping
+        const pPrev = pts[(i + 5) % 6], pNext = pts[(i + 1) % 6];
+        const len1 = Math.hypot(p[0] - pPrev[0], p[1] - pPrev[1]);
+        const len2 = Math.hypot(p[0] - pNext[0], p[1] - pNext[1]);
+        r = Math.min(r, len1 * 0.45, len2 * 0.45);
 
-    // Safety Clamp: Radius cannot be more than half of the shortest adjacent segment
-    const corners = pts.map((p, i) => ({ p: p, r: rads[i] * scale }));
+        return { p: p, r: r * scale };
+    });
 
     ctx.beginPath();
     const startX = corners[0].p[0] * scale + offX;
@@ -124,10 +126,10 @@ function drawDimensions(ctx, pts, scale, offX, offY, th) {
     const A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value);
     const C = parseFloat(document.getElementById("legW").value), D = parseFloat(document.getElementById("legH").value);
 
-    ctx.fillText(`A: ${A}mm`, offX + (A * scale) / 2, offY + (th * scale) + 40);
-    ctx.save(); ctx.translate(offX - 55, offY + (th * scale) / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(`B: ${B}mm`, 0, 0); ctx.restore();
-    ctx.fillText(`C: ${C}mm`, offX + (C * scale) / 2, offY - 20);
-    ctx.save(); ctx.translate(offX + (A * scale) + 55, offY + (th * scale) - (D * scale) / 2); ctx.rotate(Math.PI / 2); ctx.fillText(`D: ${D}mm`, 0, 0); ctx.restore();
+    ctx.fillText(`A: ${A}mm`, offX + (A * scale) / 2, offY + (th * scale) + 45);
+    ctx.save(); ctx.translate(offX - 60, offY + (th * scale) / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(`B: ${B}mm`, 0, 0); ctx.restore();
+    ctx.fillText(`C: ${C}mm`, offX + (C * scale) / 2, offY - 25);
+    ctx.save(); ctx.translate(offX + (A * scale) + 60, offY + (th * scale) - (D * scale) / 2); ctx.rotate(Math.PI / 2); ctx.fillText(`D: ${D}mm`, 0, 0); ctx.restore();
 }
 
 function downloadPNG() {
