@@ -18,16 +18,30 @@
     }
     #radiusWarning { border-color: #e74c3c; }
 
+    /* NEW: Two-column grid to flatten the UI and save vertical space */
+    .panel-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 900px) {
+      .panel-row { grid-template-columns: 1fr; }
+    }
+
+    .panel { margin-bottom: 0; } /* Let the grid handle spacing */
+    .panel h3 { margin-top: 0; margin-bottom: 15px; padding-bottom: 8px; border-bottom: 1px solid #4f545c; color: #fff; font-size: 1.1rem; }
+
+    /* Tightened corner grid to fit perfectly inside the half-width panel */
     .corner-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 25px 40px; 
-      margin-top: 15px;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 15px 20px; 
     }
     
     .corner-input-wrap { display: flex; flex-direction: column; }
     .corner-input-wrap label { 
-      font-size: 13px; 
+      font-size: 12px; 
       color: #b5bac1; 
       margin-bottom: 5px;
       font-weight: bold;
@@ -70,79 +84,90 @@
     ⚠️ Radii are too large! They have been capped to fit the side length.
   </div>
 
-  <div class="controls panel">
-    <label>Orientation:
-      <select id="type">
-        <option value="right">Right L</option>
-        <option value="left">Left L</option>
-      </select>
-    </label>
+  <div class="panel-row">
+      <div class="controls panel">
+        <h3>Dimensions & Orientation</h3>
+        <div style="display: flex; flex-wrap: wrap; gap: 15px 25px;">
+            <label>Orientation:
+              <select id="type">
+                <option value="right">Right L</option>
+                <option value="left">Left L</option>
+              </select>
+            </label>
 
-    <label>Total Width (A):
-        <input id="totalW" type="number" value="1000" onclick="this.select()">
-        <div class="range" id="rangeA">Min 200 — Max 2400 mm</div>
-    </label>
-    <label>Total Height (B):
-        <input id="totalH" type="number" value="800" onclick="this.select()">
-        <div class="range" id="rangeB">Min 200 — Max 2400 mm</div>
-    </label>
-    <label>Top Leg Width (C):
-        <input id="legW" type="number" value="300" onclick="this.select()">
-        <div class="range" id="rangeC">Min 200 mm</div>
-    </label>
-    <label>Bottom Leg Height (D):
-        <input id="legH" type="number" value="300" onclick="this.select()">
-        <div class="range" id="rangeD">Min 200 mm</div>
-    </label>
+            <label>Total Width (A):
+                <input id="totalW" type="number" value="1000" onclick="this.select()">
+                <div class="range" id="rangeA">Min 200 — Max 2400 mm</div>
+            </label>
+            <label>Total Height (B):
+                <input id="totalH" type="number" value="800" onclick="this.select()">
+                <div class="range" id="rangeB">Min 200 — Max 2400 mm</div>
+            </label>
+            <label>Top Leg Width (C):
+                <input id="legW" type="number" value="300" onclick="this.select()">
+                <div class="range" id="rangeC">Min 200 mm</div>
+            </label>
+            <label>Bottom Leg Height (D):
+                <input id="legH" type="number" value="300" onclick="this.select()">
+                <div class="range" id="rangeD">Min 200 mm</div>
+            </label>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Corner Radii</h3>
+        <p style="font-size: 11px; color: #b5bac1; margin-top: -5px; margin-bottom: 12px;">Hover to highlight on diagram. Corner 4 is the Internal radius.</p>
+        <div class="corner-grid">
+            <div class="corner-input-wrap inner-corner-box" data-corner="3">
+                <label for="rad3">Corner 4 (Internal)</label>
+                <input type="number" id="rad3" value="50" min="50">
+            </div>
+            <div class="corner-input-wrap" data-corner="0">
+                <label for="rad0">Corner 1</label>
+                <input type="number" id="rad0" value="0">
+            </div>
+            <div class="corner-input-wrap" data-corner="1">
+                <label for="rad1">Corner 2</label>
+                <input type="number" id="rad1" value="0">
+            </div>
+            <div class="corner-input-wrap" data-corner="2">
+                <label for="rad2">Corner 3</label>
+                <input type="number" id="rad2" value="0">
+            </div>
+            <div class="corner-input-wrap" data-corner="4">
+                <label for="rad4">Corner 5</label>
+                <input type="number" id="rad4" value="0">
+            </div>
+            <div class="corner-input-wrap" data-corner="5">
+                <label for="rad5">Corner 6</label>
+                <input type="number" id="rad5" value="0">
+            </div>
+        </div>
+      </div>
   </div>
 
-  <div class="panel">
-    <h3>Corner Radii</h3>
-    <p style="font-size: 12px; color: #b5bac1; margin-bottom: 10px;">Hover to highlight on diagram. Corner 4 is the Internal radius.</p>
-    <div class="corner-grid">
-        <div class="corner-input-wrap inner-corner-box" data-corner="3">
-            <label for="rad3">Corner 4 (Internal)</label>
-            <input type="number" id="rad3" value="50" min="50">
-        </div>
-        <div class="corner-input-wrap" data-corner="0">
-            <label for="rad0">Corner 1</label>
-            <input type="number" id="rad0" value="0">
-        </div>
-        <div class="corner-input-wrap" data-corner="1">
-            <label for="rad1">Corner 2</label>
-            <input type="number" id="rad1" value="0">
-        </div>
-        <div class="corner-input-wrap" data-corner="2">
-            <label for="rad2">Corner 3</label>
-            <input type="number" id="rad2" value="0">
-        </div>
-        <div class="corner-input-wrap" data-corner="4">
-            <label for="rad4">Corner 5</label>
-            <input type="number" id="rad4" value="0">
-        </div>
-        <div class="corner-input-wrap" data-corner="5">
-            <label for="rad5">Corner 6</label>
-            <input type="number" id="rad5" value="0">
-        </div>
-    </div>
-  </div>
+  <div class="panel-row">
+      <div class="edge-controls panel">
+        <h3>Edge Banding</h3>
+        <div id="dynamic-banding-controls" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center;"></div>
+      </div>
 
-  <h3>Edge Banding</h3>
-  <div class="edge-controls panel">
-    <div id="dynamic-banding-controls" style="display: flex; flex-wrap: wrap; gap: 20px; align-items: center;"></div>
-  </div>
-
-  <h3>Export</h3>
-  <div class="file-controls panel" style="display: flex; align-items: flex-end; gap: 20px;">
-    <label>File Name: <input id="fileName" type="text" value="l_shape"></label>
-    <button onclick="downloadPNG()">Download PNG</button>
-    <button onclick="downloadDXF()">Download DXF</button>
+      <div class="file-controls panel">
+        <h3>Export Part</h3>
+        <div style="display: flex; align-items: flex-end; gap: 15px; flex-wrap: wrap;">
+            <label style="flex: 1; min-width: 150px;">File Name: 
+                <input id="fileName" type="text" value="l_shape" style="width: 100%;">
+            </label>
+            <button onclick="downloadPNG()">Download PNG</button>
+            <button onclick="downloadDXF()">Download DXF</button>
+        </div>
+      </div>
   </div>
 
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v3.3.0</div>
+<div id="versionLabel">v3.2.0</div>
 
 <script src="script.js"></script>
 </body>
