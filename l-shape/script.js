@@ -199,7 +199,7 @@ function drawLShape(targetCtx = null) {
 
     const outline = generatePathData(0);
     
-    // 1. Draw Black Outline
+    // 1. Draw Master Outline
     ctx.beginPath();
     ctx.moveTo(outline.data[0].EndPt.x, outline.data[0].EndPt.y);
     for(let i=1; i<=6; i++) {
@@ -247,7 +247,7 @@ function drawLShape(targetCtx = null) {
         ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
     }
     
-    // Always draw dimensions (even onto the targetCtx for PNG export)
+    // Always draw dimensions
     drawLDimensions(ctx, outline.scale, outline.offX, outline.offY, outline.th);
 }
 
@@ -281,7 +281,6 @@ function downloadPNG() {
     const link = document.createElement("a"); link.download = (document.getElementById("fileName").value || "l_shape") + ".png"; link.href = tempCanvas.toDataURL(); link.click();
 }
 
-// Generates an exact CAD 1:1 match with DXF Bulges for radii
 function downloadDXF() {
     const isLeft = document.getElementById("type").value === "left";
     const A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value), C = parseFloat(document.getElementById("legW").value), D = parseFloat(document.getElementById("legH").value);
@@ -320,7 +319,6 @@ function downloadDXF() {
     dxf.push("  0", "POLYLINE", "  8", "0", " 66", "1", " 70", "1");
     
     dxfPts.forEach(p => {
-        // Keeps true Cartesian mapping so shape imports standing correctly
         dxf.push("  0", "VERTEX", "  8", "0", " 10", p.x.toFixed(4), " 20", p.y.toFixed(4), " 42", p.bulge.toFixed(8));
     });
     
