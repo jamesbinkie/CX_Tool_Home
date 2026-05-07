@@ -67,7 +67,7 @@
   </div>
 
   <div id="radiusWarning" class="warning-box">
-    ⚠️ Radii are too large! They have been capped to prevent overlapping.
+    ⚠️ Radii are too large! They have been capped to fit the side length.
   </div>
 
   <div class="controls panel">
@@ -129,7 +129,7 @@
 
   <h3>Edge Banding</h3>
   <div class="edge-controls panel">
-    <label><input type="checkbox" id="bandAll" checked> Band Edge Sections</label>
+    <div id="dynamic-banding-controls" style="display: flex; flex-wrap: wrap; gap: 20px; align-items: center;"></div>
   </div>
 
   <h3>Export</h3>
@@ -142,7 +142,7 @@
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v3.1.0</div>
+<div id="versionLabel">v3.2.0</div>
 
 <script src="script.js"></script>
 </body>
