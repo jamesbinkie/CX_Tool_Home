@@ -86,7 +86,6 @@ function refreshHintsAndWarnings() {
     document.getElementById("rangeD").textContent = `Min 200 — Max ${B - 50} mm`;
 }
 
-// Determines continuous sections breaking at 90-degree corners
 function updateBandingUI(outline) {
     let startIdx = 0;
     for(let i=0; i<6; i++) if (outline.data[i].r_orig === 0) { startIdx = i; break; }
@@ -140,7 +139,6 @@ function getPoints() {
     return pts;
 }
 
-// CORE MATH ENGINE: Flawless offsets and arc tracking
 function generatePathData(offset) {
     const isLeft = document.getElementById("type").value === "left";
     const sign = isLeft ? -1 : 1;
@@ -183,7 +181,6 @@ function generatePathData(offset) {
                 EndPt   = { x: Center_orig.x - N2_out.x * R_off, y: Center_orig.y - N2_out.y * R_off };
             }
 
-            // Precisely track the midpoint of the curve for the blue highlight
             let mx = (StartPt.x + EndPt.x) / 2, my = (StartPt.y + EndPt.y) / 2;
             let vx = mx - Center_orig.x, vy = my - Center_orig.y, vLen = Math.hypot(vx, vy) || 1;
             ArcMidPt = { x: Center_orig.x + (vx/vLen)*R_off, y: Center_orig.y + (vy/vLen)*R_off };
@@ -202,7 +199,7 @@ function drawLShape(targetCtx = null) {
 
     const outline = generatePathData(0);
     
-    // 1. Draw Master Outline
+    // 1. Draw Black Outline
     ctx.beginPath();
     ctx.moveTo(outline.data[0].EndPt.x, outline.data[0].EndPt.y);
     for(let i=1; i<=6; i++) {
@@ -213,7 +210,7 @@ function drawLShape(targetCtx = null) {
     ctx.closePath();
     ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // 2. Draw Colored Sectional Banding
+    // 2. Colored Sectional Banding
     const bandingControls = document.getElementById("dynamic-banding-controls");
     if (bandingControls && bandingControls.children.length > 0) {
         const banding = generatePathData(12);
@@ -244,14 +241,14 @@ function drawLShape(targetCtx = null) {
         });
     }
 
-    // Centered Corner Highlighter (tracks curve perfectly)
     if (highlightedCorner !== -1 && !targetCtx) {
         const cp = outline.data[highlightedCorner];
-        ctx.beginPath(); ctx.arc(cp.ArcMidPt.x, cp.ArcMidPt.y, 25, 0, Math.PI * 2); 
-        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 3; ctx.stroke();
+        ctx.beginPath(); ctx.arc(cp.ArcMidPt.x, cp.ArcMidPt.y, 20, 0, Math.PI * 2); 
+        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
     }
     
-    if (!targetCtx) drawLDimensions(ctx, outline.scale, outline.offX, outline.offY, outline.th);
+    // Always draw dimensions (even onto the targetCtx for PNG export)
+    drawLDimensions(ctx, outline.scale, outline.offX, outline.offY, outline.th);
 }
 
 function drawLDimensions(ctx, scale, offX, offY, th) {
@@ -284,14 +281,53 @@ function downloadPNG() {
     const link = document.createElement("a"); link.download = (document.getElementById("fileName").value || "l_shape") + ".png"; link.href = tempCanvas.toDataURL(); link.click();
 }
 
+// Generates an exact CAD 1:1 match with DXF Bulges for radii
 function downloadDXF() {
     const isLeft = document.getElementById("type").value === "left";
     const A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value), C = parseFloat(document.getElementById("legW").value), D = parseFloat(document.getElementById("legH").value);
+    
     let pts = [[0, 0], [A, 0], [A, D], [C, D], [C, B], [0, B]];
     if (isLeft) pts = pts.map(p => [A - p[0], p[1]]);
-    let dxf = ["  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES", "  0", "POLYLINE", "  8", "0", " 66", "1", " 70", "1"];
-    pts.forEach(p => dxf.push("  0", "VERTEX", "  8", "0", " 10", p[0].toFixed(4), " 20", (B - p[1]).toFixed(4)));
+    
+    const R = [];
+    for(let i=0; i<6; i++) {
+        R.push(parseFloat(document.getElementById(`rad${i}`).value) || 0);
+    }
+
+    const dxfPts = [];
+    for(let i=0; i<6; i++) {
+        const prev = pts[(i+5)%6], curr = pts[i], next = pts[(i+1)%6];
+        const r = R[i];
+        
+        if (r > 0) {
+            let dx1 = prev[0] - curr[0], dy1 = prev[1] - curr[1], l1 = Math.hypot(dx1, dy1) || 1;
+            let p_start = { x: curr[0] + (dx1/l1)*r, y: curr[1] + (dy1/l1)*r };
+            
+            let dx2 = next[0] - curr[0], dy2 = next[1] - curr[1], l2 = Math.hypot(dx2, dy2) || 1;
+            let p_end = { x: curr[0] + (dx2/l2)*r, y: curr[1] + (dy2/l2)*r };
+            
+            let b = 0.41421356;
+            if (isLeft) b = (i === 3) ? b : -b; else b = (i === 3) ? -b : b;
+            
+            dxfPts.push({ x: p_start.x, y: p_start.y, bulge: b });
+            dxfPts.push({ x: p_end.x, y: p_end.y, bulge: 0 });
+        } else {
+            dxfPts.push({ x: curr[0], y: curr[1], bulge: 0 });
+        }
+    }
+
+    let dxf = ["  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES"];
+    dxf.push("  0", "POLYLINE", "  8", "0", " 66", "1", " 70", "1");
+    
+    dxfPts.forEach(p => {
+        // Keeps true Cartesian mapping so shape imports standing correctly
+        dxf.push("  0", "VERTEX", "  8", "0", " 10", p.x.toFixed(4), " 20", p.y.toFixed(4), " 42", p.bulge.toFixed(8));
+    });
+    
     dxf.push("  0", "SEQEND", "  0", "ENDSEC", "  0", "EOF");
+    
     const blob = new Blob([dxf.join("\r\n")], { type: "application/dxf" });
-    const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = (document.getElementById("fileName").value || "l_shape") + ".dxf"; link.click();
+    const link = document.createElement("a"); link.href = URL.createObjectURL(blob); 
+    link.download = (document.getElementById("fileName").value || "l_shape") + ".dxf"; 
+    link.click();
 }
