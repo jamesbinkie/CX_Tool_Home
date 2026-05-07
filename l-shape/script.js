@@ -1,7 +1,9 @@
 let highlightedCorner = -1;
+let currentSections = [];
+const bandingColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"];
 
 window.onload = () => {
-    const ids = ["type", "totalW", "totalH", "legW", "legH", "rad0", "rad1", "rad2", "rad3", "rad4", "rad5", "bandAll"];
+    const ids = ["type", "totalW", "totalH", "legW", "legH", "rad0", "rad1", "rad2", "rad3", "rad4", "rad5"];
     
     ids.forEach(id => {
         const el = document.getElementById(id);
@@ -9,8 +11,7 @@ window.onload = () => {
             el.addEventListener("change", () => updateUI());
             if (el.tagName === "INPUT") {
                 el.addEventListener("input", () => updateUI());
-                // Pass event to validate function to know WHICH box was edited
-                if (id !== "bandAll") el.addEventListener("blur", (e) => validateAndClamp(e));
+                el.addEventListener("blur", (e) => validateAndClamp(e));
             }
         }
     });
@@ -23,7 +24,12 @@ window.onload = () => {
     updateUI();
 };
 
-function updateUI() { refreshHintsAndWarnings(); drawLShape(); }
+function updateUI() { 
+    refreshHintsAndWarnings(); 
+    const outlineData = generatePathData(0);
+    updateBandingUI(outlineData);
+    drawLShape(); 
+}
 
 function validateAndClamp(e = null) {
     const minVal = 200, sheetW = 2400, sheetH = 1200;
@@ -53,7 +59,6 @@ function validateAndClamp(e = null) {
         
         if ((r1 + r2) > sideLengths[i]) {
             conflict = true;
-            // FIX: Only cap the box the user just typed in, preserve the other radius
             if (e && e.target === r1In) {
                 r1In.value = Math.max(0, Math.floor(sideLengths[i] - r2));
             } else if (e && e.target === r2In) {
@@ -81,6 +86,52 @@ function refreshHintsAndWarnings() {
     document.getElementById("rangeD").textContent = `Min 200 — Max ${B - 50} mm`;
 }
 
+// Determines continuous sections breaking at 90-degree corners
+function updateBandingUI(outline) {
+    let startIdx = 0;
+    for(let i=0; i<6; i++) if (outline.data[i].r_orig === 0) { startIdx = i; break; }
+    
+    let sections = [];
+    let currSec = [];
+    for(let step=1; step<=6; step++) {
+        let i = (startIdx + step) % 6;
+        currSec.push(i);
+        if (outline.data[i].r_orig === 0 || step === 6) {
+            sections.push(currSec);
+            currSec = [];
+        }
+    }
+    
+    currentSections = sections;
+    const container = document.getElementById("dynamic-banding-controls");
+    if (!container || container.children.length === sections.length + 1) return; 
+
+    let html = `<label style="display: flex; align-items: center; gap: 5px; font-weight: bold;"><input type="checkbox" id="bandAll" checked> Band All</label>`;
+    sections.forEach((sec, idx) => {
+        let color = bandingColors[idx % bandingColors.length];
+        html += `<label style="display: flex; align-items: center; gap: 5px; border-bottom: 3px solid ${color}; padding-bottom: 2px;">
+                    <input type="checkbox" class="band-sec" id="bandSec${idx}" checked> Section ${idx+1}
+                 </label>`;
+    });
+    
+    container.innerHTML = html;
+
+    const allCb = document.getElementById("bandAll");
+    const secCbs = document.querySelectorAll(".band-sec");
+    
+    allCb.addEventListener("change", (e) => {
+        secCbs.forEach(cb => cb.checked = e.target.checked);
+        drawLShape();
+    });
+    
+    secCbs.forEach(cb => {
+        cb.addEventListener("change", () => {
+            allCb.checked = Array.from(secCbs).every(c => c.checked);
+            drawLShape();
+        });
+    });
+}
+
 function getPoints() {
     const A = parseFloat(document.getElementById("totalW").value) || 1000, B = parseFloat(document.getElementById("totalH").value) || 800, C = parseFloat(document.getElementById("legW").value) || 300, D = parseFloat(document.getElementById("legH").value) || 300;
     const isLeft = document.getElementById("type").value === "left";
@@ -89,29 +140,21 @@ function getPoints() {
     return pts;
 }
 
-// MATH ENGINE: Calculates mathematically perfect parallel offsets
+// CORE MATH ENGINE: Flawless offsets and arc tracking
 function generatePathData(offset) {
     const isLeft = document.getElementById("type").value === "left";
     const sign = isLeft ? -1 : 1;
-    
-    const A = parseFloat(document.getElementById("totalW").value) || 1000;
-    const B = parseFloat(document.getElementById("totalH").value) || 800;
-    
+    const A = parseFloat(document.getElementById("totalW").value) || 1000, B = parseFloat(document.getElementById("totalH").value) || 800;
     const canvas = document.getElementById("canvas");
     const margin = 140, scale = Math.min((canvas.width - margin * 2) / A, (canvas.height - margin * 2) / B);
     const offX = (canvas.width - A * scale) / 2, offY = (canvas.height - B * scale) / 2;
 
     const pts = getPoints();
-    const cArr = pts.map((p, i) => ({ 
-        x: p[0] * scale + offX, 
-        y: (B - p[1]) * scale + offY, 
-        r: (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale 
-    }));
+    const cArr = pts.map((p, i) => ({ x: p[0] * scale + offX, y: (B - p[1]) * scale + offY, r: (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale }));
 
     const data = [];
-    const n = 6;
-    for (let i = 0; i < n; i++) {
-        const prev = cArr[(i + 5) % n], curr = cArr[i], next = cArr[(i + 1) % n];
+    for (let i = 0; i < 6; i++) {
+        const prev = cArr[(i + 5) % 6], curr = cArr[i], next = cArr[(i + 1) % 6];
 
         const dx1 = curr.x - prev.x, dy1 = curr.y - prev.y, l1 = Math.hypot(dx1, dy1) || 1;
         const v1_x = dx1/l1, v1_y = dy1/l1;
@@ -119,22 +162,14 @@ function generatePathData(offset) {
         const dx2 = next.x - curr.x, dy2 = next.y - curr.y, l2 = Math.hypot(dx2, dy2) || 1;
         const v2_x = dx2/l2, v2_y = dy2/l2;
 
-        // Outward normals
-        const N1_out = { x: -v1_y * sign, y: v1_x * sign };
-        const N2_out = { x: -v2_y * sign, y: v2_x * sign };
-
+        const N1_out = { x: -v1_y * sign, y: v1_x * sign }, N2_out = { x: -v2_y * sign, y: v2_x * sign };
         const cross = v1_x * v2_y - v1_y * v2_x;
         const isConcave = (cross * sign) > 0;
 
-        const R = curr.r;
-        const R_off = Math.max(0, R + (isConcave ? -offset : offset));
+        const R = curr.r, R_off = Math.max(0, R + (isConcave ? -offset : offset));
+        const C_off = { x: curr.x + N1_out.x * offset + N2_out.x * offset, y: curr.y + N1_out.y * offset + N2_out.y * offset };
 
-        const C_off = {
-            x: curr.x + N1_out.x * offset + N2_out.x * offset,
-            y: curr.y + N1_out.y * offset + N2_out.y * offset
-        };
-
-        let StartPt, EndPt;
+        let StartPt, EndPt, ArcMidPt;
         if (R_off > 0) {
             const Center_orig = isConcave ?
                 { x: curr.x + N1_out.x * R + N2_out.x * R, y: curr.y + N1_out.y * R + N2_out.y * R } :
@@ -147,11 +182,16 @@ function generatePathData(offset) {
                 StartPt = { x: Center_orig.x - N1_out.x * R_off, y: Center_orig.y - N1_out.y * R_off };
                 EndPt   = { x: Center_orig.x - N2_out.x * R_off, y: Center_orig.y - N2_out.y * R_off };
             }
+
+            // Precisely track the midpoint of the curve for the blue highlight
+            let mx = (StartPt.x + EndPt.x) / 2, my = (StartPt.y + EndPt.y) / 2;
+            let vx = mx - Center_orig.x, vy = my - Center_orig.y, vLen = Math.hypot(vx, vy) || 1;
+            ArcMidPt = { x: Center_orig.x + (vx/vLen)*R_off, y: Center_orig.y + (vy/vLen)*R_off };
         } else {
-            StartPt = C_off; EndPt = C_off;
+            StartPt = C_off; EndPt = C_off; ArcMidPt = C_off;
         }
 
-        data.push({ StartPt, EndPt, C_off, R_off, r_orig: R });
+        data.push({ StartPt, EndPt, C_off, R_off, r_orig: R, ArcMidPt });
     }
     return { data, scale, offX, offY, th: B };
 }
@@ -162,7 +202,7 @@ function drawLShape(targetCtx = null) {
 
     const outline = generatePathData(0);
     
-    // 1. Draw Black Outline
+    // 1. Draw Master Outline
     ctx.beginPath();
     ctx.moveTo(outline.data[0].EndPt.x, outline.data[0].EndPt.y);
     for(let i=1; i<=6; i++) {
@@ -173,52 +213,42 @@ function drawLShape(targetCtx = null) {
     ctx.closePath();
     ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // 2. Colored Sectional Banding
-    if (document.getElementById("bandAll").checked) {
+    // 2. Draw Colored Sectional Banding
+    const bandingControls = document.getElementById("dynamic-banding-controls");
+    if (bandingControls && bandingControls.children.length > 0) {
         const banding = generatePathData(12);
-        const colors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"]; // Red, Blue, Green, Yellow, Purple, Orange
         
-        // Find a sharp corner to act as the start point of Section 1
-        let startIdx = 0;
-        for(let i=0; i<6; i++) if (banding.data[i].r_orig === 0) { startIdx = i; break; }
-
-        let colorIdx = 0;
-        ctx.beginPath();
-        ctx.moveTo(banding.data[startIdx].EndPt.x, banding.data[startIdx].EndPt.y);
-        ctx.strokeStyle = colors[colorIdx];
-        ctx.lineWidth = 4;
-
-        for(let step=1; step<=6; step++) {
-            let i = (startIdx + step) % 6;
-            let b = banding.data[i];
-
-            ctx.lineTo(b.StartPt.x, b.StartPt.y);
-
-            if (b.r_orig > 0) {
-                // Smooth Corner: Wrap around with the same color
-                if (b.R_off > 0) ctx.arcTo(b.C_off.x, b.C_off.y, b.EndPt.x, b.EndPt.y, b.R_off);
-                else ctx.lineTo(b.C_off.x, b.C_off.y);
-            } else {
-                // Sharp 90deg Corner: End the section and change color
-                ctx.lineTo(b.C_off.x, b.C_off.y);
+        currentSections.forEach((sec, sIdx) => {
+            const cb = document.getElementById(`bandSec${sIdx}`);
+            if (cb && cb.checked) {
+                ctx.beginPath();
+                let firstEdge = sec[0];
+                let prevEdge = (firstEdge + 5) % 6;
+                ctx.moveTo(banding.data[prevEdge].EndPt.x, banding.data[prevEdge].EndPt.y);
+                
+                ctx.strokeStyle = bandingColors[sIdx % bandingColors.length];
+                ctx.lineWidth = 4;
+                
+                sec.forEach((i) => {
+                    let b = banding.data[i];
+                    ctx.lineTo(b.StartPt.x, b.StartPt.y);
+                    if (b.r_orig > 0) {
+                        if (b.R_off > 0) ctx.arcTo(b.C_off.x, b.C_off.y, b.EndPt.x, b.EndPt.y, b.R_off);
+                        else ctx.lineTo(b.C_off.x, b.C_off.y);
+                    } else {
+                        ctx.lineTo(b.C_off.x, b.C_off.y);
+                    }
+                });
                 ctx.stroke();
-
-                if (step < 6) {
-                    colorIdx++;
-                    ctx.beginPath();
-                    ctx.moveTo(b.C_off.x, b.C_off.y);
-                    ctx.strokeStyle = colors[colorIdx % colors.length];
-                    ctx.lineWidth = 4;
-                }
             }
-        }
-        ctx.stroke(); // Closes final path
+        });
     }
 
+    // Centered Corner Highlighter (tracks curve perfectly)
     if (highlightedCorner !== -1 && !targetCtx) {
         const cp = outline.data[highlightedCorner];
-        ctx.beginPath(); ctx.arc(cp.C_off.x, cp.C_off.y, 20, 0, Math.PI * 2); 
-        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath(); ctx.arc(cp.ArcMidPt.x, cp.ArcMidPt.y, 25, 0, Math.PI * 2); 
+        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 3; ctx.stroke();
     }
     
     if (!targetCtx) drawLDimensions(ctx, outline.scale, outline.offX, outline.offY, outline.th);
