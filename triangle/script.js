@@ -1,3 +1,4 @@
+let highlightedCorner = -1; // Added for unified hover highlighting
 let currentSections = [];
 const bandingColors = ["#e74c3c", "#3498db", "#2ecc71"];
 const edgeNames = ["Bottom", "Right", "Left"];
@@ -15,6 +16,13 @@ window.onload = () => {
             }
         }
     });
+
+    // Unified Hover Logic
+    document.querySelectorAll('.corner-input-wrap').forEach(wrap => {
+        wrap.addEventListener('mouseenter', () => { highlightedCorner = parseInt(wrap.dataset.corner); drawTriangle(); });
+        wrap.addEventListener('mouseleave', () => { highlightedCorner = -1; drawTriangle(); });
+    });
+
     updateUI();
 };
 
@@ -112,6 +120,7 @@ function getPoints() {
     return [[0, y], [c, y], [x, 0]];
 }
 
+// UNIFIED MATH ENGINE
 function intersectLines(l1, l2) {
     const denom = (l1.x1 - l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 - l2.x2);
     if (Math.abs(denom) < 0.0001) return { x: l1.x2, y: l1.y2 };
@@ -253,7 +262,7 @@ function drawTriangle(targetCanvas = null) {
                 ctx.strokeStyle = bandingColors[sIdx % bandingColors.length]; 
                 ctx.lineWidth = 4;
                 
-                if (sec.length === n) { // Handle full closed loop wrap around
+                if (sec.length === n) {
                     ctx.moveTo(bCrns[0].arcStart.x, bCrns[0].arcStart.y);
                     for (let i = 0; i < n; i++) {
                         let c = bCrns[i];
@@ -283,6 +292,13 @@ function drawTriangle(targetCanvas = null) {
     }
 
     drawDimensions(ctx, pts, scale, offX, offY);
+
+    // Hover Highlight Logic
+    if (highlightedCorner !== -1 && !targetCanvas) {
+        const cp = crns[highlightedCorner];
+        ctx.beginPath(); ctx.arc(cp.C_off.x, cp.C_off.y, 20, 0, Math.PI * 2); 
+        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
+    }
 }
 
 function drawDimensions(ctx, pts, scale, offX, offY) {
