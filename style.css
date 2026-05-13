@@ -4,16 +4,30 @@ body {
   background: #2b2d31;
   color: #f2f3f5;
   margin: 0;
-  padding: 20px;
+  padding: 0;
   min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center; /* Vertically centers the entire app */
 }
 
-/* ---------- LANDING PAGE STYLES ---------- */
+/* ---------- LANDING PAGE & CONTAINERS ---------- */
 .landing-container {
+  width: 100%;
   max-width: 1100px;
   margin: 0 auto;
   text-align: center;
   padding: 40px 20px;
+  box-sizing: border-box;
+}
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+  padding: 20px;
+  box-sizing: border-box;
+  max-height: 100vh;
+  overflow-y: auto; /* Fallback scrolling for tiny laptop screens */
 }
 
 header h1 { font-size: 2.8rem; margin-bottom: 10px; color: #fff; text-transform: uppercase; letter-spacing: 2px; }
@@ -43,19 +57,16 @@ header p { color: #b5bac1; margin-bottom: 50px; }
 /* ---------- TOOL INTERFACE STYLES ---------- */
 .panel {
   background: #313338;
-  padding: 20px;
+  padding: 15px 20px;
   border-radius: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 15px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.25);
 }
 
-.controls { display: flex; flex-wrap: wrap; gap: 25px 40px; align-items: flex-start; }
+.controls { display: flex; flex-wrap: wrap; gap: 20px 35px; align-items: flex-start; }
+.controls label, .file-controls label { display: flex; flex-direction: column; font-weight: 600; color: #e3e5e8; min-width: 150px; }
 
-.controls label, .file-controls label {
-  display: flex; flex-direction: column; font-weight: 600; color: #e3e5e8; min-width: 150px;
-}
-
-/* Ensure inputs always have bright text */
+/* Inputs */
 .controls input, .controls select, .file-controls input, .corner-input-wrap input {
   padding: 8px 12px;
   background: #1e1f22 !important;
@@ -79,8 +90,19 @@ button {
 
 button:hover { background: #007fb5; }
 
-canvas { display: block; margin: 25px auto; background: #dfe8f2; border-radius: 8px; max-width: 100%; border: 1px solid #000; }
-.nav-header { margin-bottom: 20px; }
-.range { font-size: 11px; color: #b5bac1; margin-top: 5px; font-weight: normal; }
+/* Responsive Canvas */
+canvas { 
+  display: block; 
+  margin: 10px auto 0; 
+  background: #dfe8f2; 
+  border-radius: 8px; 
+  width: 100%; 
+  max-height: 48vh; /* Will scale layout beautifully on 1080p */
+  object-fit: contain;
+  border: 1px solid #1e1f22; 
+}
 
+.nav-header { margin-bottom: 10px; }
+h2 { margin-top: 0; margin-bottom: 15px; }
+.range { font-size: 11px; color: #b5bac1; margin-top: 5px; font-weight: normal; }
 #versionLabel { position: fixed; bottom: 12px; right: 12px; font-size: 14px; color: #b5bac1; opacity: 0.5; }
