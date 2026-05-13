@@ -77,10 +77,9 @@ function validateRadii() {
         if (val === 0) continue;
 
         let isBanded = false;
-        // Corner 'i' connects edge 'i-1' and edge 'i'. Both are part of the same section if rounded.
         currentSections.forEach((sec, sIdx) => {
             const cb = document.getElementById(`bandSec${sIdx}`);
-            if (cb && cb.checked && sec.includes(i)) isBanded = true;
+            if (cb && cb.checked && (sec.includes(i) || sec.includes((i + 3) % 4))) isBanded = true;
         });
 
         if (isBanded && val > 0 && val < 50) {
@@ -166,7 +165,6 @@ function updateBandingUI(radii) {
     let startIdx = 0;
     for (let i = 0; i < n; i++) if (radii[i] === 0) { startIdx = i; break; }
     
-    // Group edges connected by rounded corners
     let sections = []; let currSec = [];
     for (let step = 0; step < n; step++) {
         let edgeIdx = (startIdx + step) % n;
@@ -178,7 +176,6 @@ function updateBandingUI(radii) {
     const container = document.getElementById("dynamic-banding-controls");
     if (JSON.stringify(currentSections) === JSON.stringify(sections) && container.children.length > 0) return;
     
-    // Memorize checked states to prevent resetting checks
     let oldEdgeBanded = new Array(n).fill(true);
     if (currentSections.length > 0 && container.children.length > 0) {
         currentSections.forEach((sec, sIdx) => {
@@ -226,21 +223,18 @@ function drawTrapezium(targetCanvas = null) {
     const baseData = generatePathData(pts, 0, radii, scale, offX, offY);
     const crns = baseData.corners;
 
-    // Draw solid inner core
     ctx.beginPath();
     ctx.moveTo(crns[0].arcStart.x, crns[0].arcStart.y);
     for (let i = 0; i < n; i++) {
         let c = crns[i];
         if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
         else ctx.lineTo(c.C_off.x, c.C_off.y);
-        
         let next_c = crns[(i + 1) % n];
         ctx.lineTo(next_c.arcStart.x, next_c.arcStart.y);
     }
     ctx.closePath();
     ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // Draw edge banding sections
     const bandingControls = document.getElementById("dynamic-banding-controls");
     if (bandingControls && bandingControls.children.length > 0) {
         const bandData = generatePathData(pts, 12, radii, scale, offX, offY);
@@ -250,26 +244,118 @@ function drawTrapezium(targetCanvas = null) {
             const cb = document.getElementById(`bandSec${sIdx}`);
             if (cb && cb.checked) {
                 ctx.beginPath();
-                let firstCorner = sec[0]; 
-                ctx.moveTo(bCrns[firstCorner].arcEnd.x, bCrns[firstCorner].arcEnd.y);
-                
                 ctx.strokeStyle = bandingColors[sIdx % bandingColors.length]; 
                 ctx.lineWidth = 4;
                 
-                sec.forEach((edgeIdx, idx) => {
-                    let nextCorner = (edgeIdx + 1) % n;
-                    let c = bCrns[nextCorner];
-                    
-                    ctx.lineTo(c.arcStart.x, c.arcStart.y);
-                    if (idx < sec.length - 1) { // Connect rounded corners inside the same section
+                if (sec.length === n) { // Handles the fully connected loop wrap around
+                    ctx.moveTo(bCrns[0].arcStart.x, bCrns[0].arcStart.y);
+                    for (let i = 0; i < n; i++) {
+                        let c = bCrns[i];
                         if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
                         else ctx.lineTo(c.C_off.x, c.C_off.y);
+                        let next_c = bCrns[(i + 1) % n];
+                        ctx.lineTo(next_c.arcStart.x, next_c.arcStart.y);
                     }
-                });
+                    ctx.closePath();
+                } else {
+                    let firstEdge = sec[0];
+                    ctx.moveTo(bCrns[firstEdge].arcEnd.x, bCrns[firstEdge].arcEnd.y);
+                    
+                    sec.forEach((edgeIdx, idx) => {
+                        let nextCorner = (edgeIdx + 1) % n;
+                        let c = bCrns[nextCorner];
+                        ctx.lineTo(c.arcStart.x, c.arcStart.y);
+                        if (idx < sec.length - 1) { 
+                            if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
+                            else ctx.lineTo(c.C_off.x, c.C_off.y);
+                        }
+                    });
+                }
                 ctx.stroke();
             }
         });
     }
+
+    drawDimensions(ctx, pts, scale, offX, offY);
+}
+
+function drawDimensions(ctx, pts, scale, offsetX, offsetY) {
+    const TL = pts[0], TR = pts[1], BR = pts[2], BL = pts[3];
+
+    drawDimLine(
+        ctx,
+        TL[0] * scale + offsetX, TL[1] * scale + offsetY,
+        TR[0] * scale + offsetX, TR[1] * scale + offsetY,
+        `${Number((TR[0] - TL[0]).toFixed(2))} mm`,
+        "above"
+    );
+
+    drawDimLine(
+        ctx,
+        BL[0] * scale + offsetX, BL[1] * scale + offsetY,
+        BR[0] * scale + offsetX, BR[1] * scale + offsetY,
+        `${Number((BR[0] - BL[0]).toFixed(2))} mm`,
+        "below"
+    );
+
+    const TLs = TL[0] * scale + offsetX;
+    const BLs = BL[0] * scale + offsetX;
+    const shapeLeft = Math.min(TLs, BLs);
+    
+    const scaleFactor = ctx.canvas.width / 900;
+    const dimOffset = 20 * scaleFactor;
+    const spaceLeft = shapeLeft; 
+    const spaceRight = ctx.canvas.width - Math.max(TR[0] * scale + offsetX, BR[0] * scale + offsetX);
+    
+    let position = (spaceRight > spaceLeft) ? "right" : "left";
+    let dimX = (position === "right") ? Math.max(TR[0] * scale + offsetX, BR[0] * scale + offsetX) + dimOffset : shapeLeft - dimOffset;
+    
+    drawDimLine(
+        ctx,
+        dimX, TL[1] * scale + offsetY,
+        dimX, BL[1] * scale + offsetY,
+        `${Number((BL[1] - TL[1]).toFixed(2))} mm`,
+        position
+    );
+}
+
+function drawDimLine(ctx, x1, y1, x2, y2, label, position) {
+    const scaleFactor = ctx.canvas.width / 900;
+    const offset = 20 * scaleFactor;
+    const textOffset = 12 * scaleFactor;
+    ctx.font = Math.max(10, 18 * scaleFactor) + "px Arial";
+
+    let lineX1 = x1, lineY1 = y1, lineX2 = x2, lineY2 = y2;
+    if (position === "above") { lineY1 -= offset; lineY2 -= offset; }
+    else if (position === "below") { lineY1 += offset; lineY2 += offset; }
+    else if (position === "left") { lineX1 -= offset; lineX2 -= offset; }
+    else if (position === "right") { lineX1 += offset; lineX2 += offset; }
+
+    ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2);
+    ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, 1.2 * scaleFactor); ctx.stroke();
+
+    drawArrow(ctx, lineX1, lineY1, lineX2, lineY2);
+    drawArrow(ctx, lineX2, lineY2, lineX1, lineY1);
+
+    ctx.textAlign = (position === "left") ? "right" : (position === "right" ? "left" : "center");
+    ctx.textBaseline = (position === "below") ? "top" : (position === "above" ? "bottom" : "middle");
+
+    let textX = (lineX1 + lineX2) / 2, textY = (lineY1 + lineY2) / 2;
+    if (position === "above") textY -= textOffset;
+    else if (position === "below") textY += textOffset;
+    else if (position === "left") textX -= textOffset;
+    else if (position === "right") textX += textOffset;
+
+    ctx.fillStyle = "#000"; ctx.fillText(label, textX, textY);
+}
+
+function drawArrow(ctx, x1, y1, x2, y2) {
+    const scaleFactor = ctx.canvas.width / 900, size = 8 * scaleFactor, arrowOffset = 6 * scaleFactor;
+    const angle = Math.atan2(y2 - y1, x2 - x1), tipX = x2 + arrowOffset * Math.cos(angle), tipY = y2 + arrowOffset * Math.sin(angle);
+    ctx.beginPath(); ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX - size * Math.cos(angle - Math.PI / 6), tipY - size * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(tipX - size * Math.cos(angle + Math.PI / 6), tipY - size * Math.sin(angle + Math.PI / 6));
+    ctx.closePath(); ctx.fillStyle = "#000"; ctx.fill();
 }
 
 function computeDXFVertices(pts, radii) {
