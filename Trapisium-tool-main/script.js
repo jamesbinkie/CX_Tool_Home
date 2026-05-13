@@ -1,3 +1,4 @@
+let highlightedCorner = -1; // Added for unified hover highlighting
 let currentSections = [];
 const bandingColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f"];
 const edgeNames = ["Top", "Right", "Bottom", "Left"];
@@ -20,6 +21,12 @@ window.onload = () => {
         document.getElementById("Dlabel").style.display = (this.value === "irregular") ? "flex" : "none";
         validateAndClamp();
         updateUI();
+    });
+
+    // Unified Hover Logic
+    document.querySelectorAll('.corner-input-wrap').forEach(wrap => {
+        wrap.addEventListener('mouseenter', () => { highlightedCorner = parseInt(wrap.dataset.corner); drawTrapezium(); });
+        wrap.addEventListener('mouseleave', () => { highlightedCorner = -1; drawTrapezium(); });
     });
 
     refreshMaxLabels();
@@ -107,6 +114,7 @@ function getPoints() {
     }
 }
 
+// UNIFIED MATH ENGINE
 function intersectLines(l1, l2) {
     const denom = (l1.x1 - l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 - l2.x2);
     if (Math.abs(denom) < 0.0001) return { x: l1.x2, y: l1.y2 };
@@ -247,7 +255,7 @@ function drawTrapezium(targetCanvas = null) {
                 ctx.strokeStyle = bandingColors[sIdx % bandingColors.length]; 
                 ctx.lineWidth = 4;
                 
-                if (sec.length === n) { // Handles the fully connected loop wrap around
+                if (sec.length === n) { 
                     ctx.moveTo(bCrns[0].arcStart.x, bCrns[0].arcStart.y);
                     for (let i = 0; i < n; i++) {
                         let c = bCrns[i];
@@ -277,29 +285,21 @@ function drawTrapezium(targetCanvas = null) {
     }
 
     drawDimensions(ctx, pts, scale, offX, offY);
+
+    // Hover Highlight Logic
+    if (highlightedCorner !== -1 && !targetCanvas) {
+        const cp = crns[highlightedCorner];
+        ctx.beginPath(); ctx.arc(cp.C_off.x, cp.C_off.y, 20, 0, Math.PI * 2); 
+        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
+    }
 }
 
 function drawDimensions(ctx, pts, scale, offsetX, offsetY) {
     const TL = pts[0], TR = pts[1], BR = pts[2], BL = pts[3];
+    drawDimLine(ctx, TL[0] * scale + offsetX, TL[1] * scale + offsetY, TR[0] * scale + offsetX, TR[1] * scale + offsetY, `${Number((TR[0] - TL[0]).toFixed(2))} mm`, "above");
+    drawDimLine(ctx, BL[0] * scale + offsetX, BL[1] * scale + offsetY, BR[0] * scale + offsetX, BR[1] * scale + offsetY, `${Number((BR[0] - BL[0]).toFixed(2))} mm`, "below");
 
-    drawDimLine(
-        ctx,
-        TL[0] * scale + offsetX, TL[1] * scale + offsetY,
-        TR[0] * scale + offsetX, TR[1] * scale + offsetY,
-        `${Number((TR[0] - TL[0]).toFixed(2))} mm`,
-        "above"
-    );
-
-    drawDimLine(
-        ctx,
-        BL[0] * scale + offsetX, BL[1] * scale + offsetY,
-        BR[0] * scale + offsetX, BR[1] * scale + offsetY,
-        `${Number((BR[0] - BL[0]).toFixed(2))} mm`,
-        "below"
-    );
-
-    const TLs = TL[0] * scale + offsetX;
-    const BLs = BL[0] * scale + offsetX;
+    const TLs = TL[0] * scale + offsetX, BLs = BL[0] * scale + offsetX;
     const shapeLeft = Math.min(TLs, BLs);
     
     const scaleFactor = ctx.canvas.width / 900;
@@ -310,19 +310,11 @@ function drawDimensions(ctx, pts, scale, offsetX, offsetY) {
     let position = (spaceRight > spaceLeft) ? "right" : "left";
     let dimX = (position === "right") ? Math.max(TR[0] * scale + offsetX, BR[0] * scale + offsetX) + dimOffset : shapeLeft - dimOffset;
     
-    drawDimLine(
-        ctx,
-        dimX, TL[1] * scale + offsetY,
-        dimX, BL[1] * scale + offsetY,
-        `${Number((BL[1] - TL[1]).toFixed(2))} mm`,
-        position
-    );
+    drawDimLine(ctx, dimX, TL[1] * scale + offsetY, dimX, BL[1] * scale + offsetY, `${Number((BL[1] - TL[1]).toFixed(2))} mm`, position);
 }
 
 function drawDimLine(ctx, x1, y1, x2, y2, label, position) {
-    const scaleFactor = ctx.canvas.width / 900;
-    const offset = 20 * scaleFactor;
-    const textOffset = 12 * scaleFactor;
+    const scaleFactor = ctx.canvas.width / 900, offset = 20 * scaleFactor, textOffset = 12 * scaleFactor;
     ctx.font = Math.max(10, 18 * scaleFactor) + "px Arial";
 
     let lineX1 = x1, lineY1 = y1, lineX2 = x2, lineY2 = y2;
@@ -334,8 +326,7 @@ function drawDimLine(ctx, x1, y1, x2, y2, label, position) {
     ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2);
     ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, 1.2 * scaleFactor); ctx.stroke();
 
-    drawArrow(ctx, lineX1, lineY1, lineX2, lineY2);
-    drawArrow(ctx, lineX2, lineY2, lineX1, lineY1);
+    drawArrow(ctx, lineX1, lineY1, lineX2, lineY2); drawArrow(ctx, lineX2, lineY2, lineX1, lineY1);
 
     ctx.textAlign = (position === "left") ? "right" : (position === "right" ? "left" : "center");
     ctx.textBaseline = (position === "below") ? "top" : (position === "above" ? "bottom" : "middle");
