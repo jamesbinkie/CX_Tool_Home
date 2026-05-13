@@ -71,7 +71,7 @@ function validateRadii() {
         let isBanded = false;
         currentSections.forEach((sec, sIdx) => {
             const cb = document.getElementById(`bandSec${sIdx}`);
-            if (cb && cb.checked && sec.includes(i)) isBanded = true;
+            if (cb && cb.checked && (sec.includes(i) || sec.includes((i + 2) % 3))) isBanded = true;
         });
 
         if (isBanded && val > 0 && val < 50) {
@@ -250,25 +250,75 @@ function drawTriangle(targetCanvas = null) {
             const cb = document.getElementById(`bandSec${sIdx}`);
             if (cb && cb.checked) {
                 ctx.beginPath();
-                let firstCorner = sec[0]; 
-                ctx.moveTo(bCrns[firstCorner].arcEnd.x, bCrns[firstCorner].arcEnd.y);
-                
                 ctx.strokeStyle = bandingColors[sIdx % bandingColors.length]; 
                 ctx.lineWidth = 4;
                 
-                sec.forEach((edgeIdx, idx) => {
-                    let nextCorner = (edgeIdx + 1) % n;
-                    let c = bCrns[nextCorner];
-                    
-                    ctx.lineTo(c.arcStart.x, c.arcStart.y);
-                    if (idx < sec.length - 1) { 
+                if (sec.length === n) { // Handle full closed loop wrap around
+                    ctx.moveTo(bCrns[0].arcStart.x, bCrns[0].arcStart.y);
+                    for (let i = 0; i < n; i++) {
+                        let c = bCrns[i];
                         if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
                         else ctx.lineTo(c.C_off.x, c.C_off.y);
+                        let next_c = bCrns[(i + 1) % n];
+                        ctx.lineTo(next_c.arcStart.x, next_c.arcStart.y);
                     }
-                });
+                    ctx.closePath();
+                } else {
+                    let firstEdge = sec[0];
+                    ctx.moveTo(bCrns[firstEdge].arcEnd.x, bCrns[firstEdge].arcEnd.y);
+                    
+                    sec.forEach((edgeIdx, idx) => {
+                        let nextCorner = (edgeIdx + 1) % n;
+                        let c = bCrns[nextCorner];
+                        ctx.lineTo(c.arcStart.x, c.arcStart.y);
+                        if (idx < sec.length - 1) { 
+                            if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
+                            else ctx.lineTo(c.C_off.x, c.C_off.y);
+                        }
+                    });
+                }
                 ctx.stroke();
             }
         });
+    }
+
+    drawDimensions(ctx, pts, scale, offX, offY);
+}
+
+function drawDimensions(ctx, pts, scale, offX, offY) {
+    ctx.font = "14px Arial"; ctx.fillStyle = "#000"; ctx.textAlign = "center";
+    const n = pts.length, cx = pts.reduce((s, p) => s + p[0], 0) / n * scale + offX, cy = pts.reduce((s, p) => s + p[1], 0) / n * scale + offY;
+    
+    for (let i = 0; i < n; i++) {
+        const p1 = pts[i], p2 = pts[(i + 1) % n];
+        const x1 = p1[0] * scale + offX, y1 = p1[1] * scale + offY, x2 = p2[0] * scale + offX, y2 = p2[1] * scale + offY;
+        const dx = x2 - x1, dy = y2 - y1, len = Math.sqrt(dx * dx + dy * dy);
+        
+        if (len < 5) continue;
+        
+        let nx = -dy / len, ny = dx / len;
+        if (Math.hypot(((x1+x2)/2 + nx*10) - cx, ((y1+y2)/2 + ny*10) - cy) < Math.hypot((x1+x2)/2 - cx, (y1+y2)/2 - cy)) { nx = -nx; ny = -ny; }
+        
+        const dimOffset = 60;
+        const lx1 = x1 + nx * dimOffset, ly1 = y1 + ny * dimOffset, lx2 = x2 + nx * dimOffset, ly2 = y2 + ny * dimOffset;
+        const mx = (lx1 + lx2) / 2, my = (ly1 + ly2) / 2;
+        const label = `${Math.sqrt(Math.pow(p2[0]-p1[0], 2) + Math.pow(p2[1]-p1[1], 2)).toFixed(1)} mm`;
+        const textWidth = ctx.measureText(label).width + 15, angle = Math.atan2(ly2 - ly1, lx2 - lx1);
+        
+        ctx.beginPath(); 
+        ctx.moveTo(lx1, ly1); 
+        ctx.lineTo(mx - Math.cos(angle) * (textWidth/2), my - Math.sin(angle) * (textWidth/2)); 
+        ctx.moveTo(mx + Math.cos(angle) * (textWidth/2), my + Math.sin(angle) * (textWidth/2)); 
+        ctx.lineTo(lx2, ly2); 
+        ctx.strokeStyle = "#444"; ctx.lineWidth = 1.2; ctx.stroke();
+        
+        const size = 8; 
+        ctx.beginPath(); ctx.moveTo(lx2, ly2); 
+        ctx.lineTo(lx2 - size * Math.cos(angle - Math.PI / 6), ly2 - size * Math.sin(angle - Math.PI / 6)); 
+        ctx.lineTo(lx2 - size * Math.cos(angle + Math.PI / 6), ly2 - size * Math.sin(angle + Math.PI / 6)); 
+        ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
+        
+        ctx.fillText(label, mx, my + 4);
     }
 }
 
