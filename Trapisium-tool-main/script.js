@@ -1,69 +1,63 @@
 let currentSections = [];
-const bandingColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f"];
+const bandingColors = ["#e74c3c", "#3498db", "#2ecc71"];
 
 window.onload = () => {
-    const inputs = ["A", "B", "C", "D", "rad0", "rad1", "rad2", "rad3"];
+    const inputs = ["type", "isSymmetric", "W", "H", "sideA", "sideB", "sideC", "rad0", "rad1", "rad2"];
     inputs.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            // Live visual redraw while typing (no value clamping)
-            el.addEventListener("input", () => { refreshMaxLabels(); drawTrapezium(); });
-            // Hard validation rules apply only when clicking out of the box
-            el.addEventListener("blur", () => { validateAndClamp(); updateUI(); });
+            el.addEventListener("change", () => { updateUI(); });
+            if (el.tagName === "INPUT" && el.type === "number") {
+                el.addEventListener("input", () => { drawTriangle(); });
+                el.addEventListener("blur", () => { validateAndClamp(); updateUI(); });
+            }
         }
     });
-
-    document.getElementById("type").addEventListener("change", function () {
-        document.getElementById("Dlabel").style.display = (this.value === "irregular") ? "flex" : "none";
-        validateAndClamp();
-        updateUI();
-    });
-
-    refreshMaxLabels();
     updateUI();
 };
 
-function refreshMaxLabels() {
-    const Bv = parseFloat(document.getElementById("B").value) || 50;
-    const Cv = parseFloat(document.getElementById("C").value) || 20;
-    document.getElementById("CmaxLabel").textContent = Math.max(20, Bv - 1);
-    document.getElementById("DmaxLabel").textContent = Math.max(0, Bv - Cv);
-}
-
 function updateUI() {
-    refreshMaxLabels();
+    const type = document.getElementById("type").value;
+    const isSym = document.getElementById("isSymmetric").checked;
+    document.getElementById("wh-controls").style.display = (type !== "standard" || isSym) ? "flex" : "none";
+    document.getElementById("standard-toggle-wrap").style.display = (type === "standard") ? "flex" : "none";
+    document.getElementById("abc-controls").style.display = (type === "standard" && !isSym) ? "flex" : "none";
+    
+    refreshHintsAndWarnings();
     updateBandingUI(getRadii());
     validateRadii();
-    drawTrapezium();
+    drawTriangle();
 }
 
 function validateAndClamp() {
-    const sheetW = 2400, sheetH = 1200;
-    let a = parseFloat(document.getElementById("A").value) || 100;
-    let b = parseFloat(document.getElementById("B").value) || 50;
-    let c = parseFloat(document.getElementById("C").value) || 20;
-    let d = parseFloat(document.getElementById("D").value) || 0;
+    const type = document.getElementById("type").value;
+    const isSym = document.getElementById("isSymmetric").checked;
+    const minVal = 200, sheetW = 2400, sheetH = 1200;
 
-    a = Math.max(100, Math.min(a, sheetW));
-    b = Math.max(50, Math.min(b, sheetW));
-    if (a > sheetH) b = Math.min(b, sheetH); else if (b > sheetH) a = Math.min(a, sheetH);
-    c = Math.max(20, Math.min(c, b - 1));
-    d = Math.max(0, Math.min(d, b - c));
-
-    document.getElementById("A").value = Math.round(a);
-    document.getElementById("B").value = Math.round(b);
-    document.getElementById("C").value = Math.round(c);
-    document.getElementById("D").value = Math.round(d);
+    if (type !== "standard" || isSym) {
+        const wIn = document.getElementById("W"), hIn = document.getElementById("H");
+        let w = parseFloat(wIn.value) || minVal, h = parseFloat(hIn.value) || minVal;
+        w = Math.max(minVal, Math.min(w, sheetW));
+        h = Math.max(minVal, Math.min(h, sheetW));
+        if (w > sheetH) h = Math.min(h, sheetH); else if (h > sheetH) w = Math.min(w, sheetH);
+        wIn.value = Math.round(w); hIn.value = Math.round(h);
+    } else {
+        const aIn = document.getElementById("sideA"), bIn = document.getElementById("sideB"), cIn = document.getElementById("sideC");
+        let a = parseFloat(aIn.value) || minVal, b = parseFloat(bIn.value) || minVal, c = parseFloat(cIn.value) || minVal;
+        a = Math.max(minVal, a); b = Math.max(minVal, b); c = Math.max(minVal, Math.min(c, sheetW));
+        if (a + b <= c) { a = Math.round(c * 0.6); b = Math.round(c * 0.6); }
+        aIn.value = a; bIn.value = b; cIn.value = c;
+    }
 }
 
 function getRadii() {
-    return [parseFloat(document.getElementById("rad0").value) || 0, parseFloat(document.getElementById("rad1").value) || 0, parseFloat(document.getElementById("rad2").value) || 0, parseFloat(document.getElementById("rad3").value) || 0];
+    return [parseFloat(document.getElementById("rad0").value) || 0, parseFloat(document.getElementById("rad1").value) || 0, parseFloat(document.getElementById("rad2").value) || 0];
 }
 
 function validateRadii() {
     let conflict = false;
     const radii = getRadii();
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 3; i++) {
         let rEl = document.getElementById(`rad${i}`);
         let val = parseFloat(rEl.value) || 0;
         if (val === 0) continue;
@@ -74,7 +68,6 @@ function validateRadii() {
             if (cb && cb.checked && sec.includes(i)) isBanded = true;
         });
 
-        // Only enforce 50mm min if banding flows over this corner
         if (isBanded && val > 0 && val < 50) {
             rEl.value = 50;
             conflict = true;
@@ -83,21 +76,34 @@ function validateRadii() {
     document.getElementById("radiusWarning").style.display = conflict ? "block" : "none";
 }
 
-function getPoints() {
-    const type = document.getElementById("type").value;
-    const A = parseFloat(document.getElementById("A").value) || 100;
-    const B = parseFloat(document.getElementById("B").value) || 50;
-    const C = parseFloat(document.getElementById("C").value) || 20;
-    const D = parseFloat(document.getElementById("D").value) || 0;
-
-    if (type === "regular") {
-        const offset = (B - C) / 2;
-        return [[offset, 0], [offset + C, 0], [B, A], [0, A]];
-    } else if (type === "right") {
-        return [[0, 0], [C, 0], [B, A], [0, A]];
-    } else {
-        return [[D, 0], [D + C, 0], [B, A], [0, A]];
+function refreshHintsAndWarnings() {
+    const pts = getPoints();
+    const w = Math.max(...pts.map(p => p[0])) - Math.min(...pts.map(p => p[0]));
+    const h = Math.max(...pts.map(p => p[1])) - Math.min(...pts.map(p => p[1]));
+    document.getElementById("sheetWarning").style.display = (Math.max(w, h) > 2400 || Math.min(w, h) > 1200) ? "block" : "none";
+    
+    let isBanded = false;
+    currentSections.forEach((sec, i) => { if(document.getElementById(`bandSec${i}`)?.checked) isBanded = true; });
+    
+    const angles = [];
+    for (let i = 0; i < 3; i++) {
+        const p1 = pts[i], p0 = pts[(i + 2) % 3], p2 = pts[(i + 1) % 3];
+        const v1 = { x: p0[0] - p1[0], y: p0[1] - p1[1] }, v2 = { x: p2[0] - p1[0], y: p2[1] - p1[1] };
+        const dot = v1.x * v2.x + v1.y * v2.y, mag = Math.sqrt(v1.x**2 + v1.y**2) * Math.sqrt(v2.x**2 + v2.y**2);
+        angles.push(Math.acos(Math.max(-1, Math.min(1, dot / (mag || 1)))) * (180 / Math.PI));
     }
+    document.getElementById("safetyWarning").style.display = (angles.some(a => a < 30) && isBanded) ? "block" : "none";
+}
+
+function getPoints() {
+    const type = document.getElementById("type").value, W = parseFloat(document.getElementById("W").value) || 200, H = parseFloat(document.getElementById("H").value) || 200, isSym = document.getElementById("isSymmetric").checked;
+    if (type === "right") return [[0, H], [W, H], [0, 0]];
+    if (type === "left") return [[0, H], [W, H], [W, 0]];
+    if (isSym) return [[0, H], [W, H], [W/2, 0]];
+    const a = parseFloat(document.getElementById("sideA").value) || 200, b = parseFloat(document.getElementById("sideB").value) || 200, c = parseFloat(document.getElementById("sideC").value) || 200;
+    if (a + b <= c) return [[0, 100], [c, 100], [c/2, 0]];
+    const x = (a * a + c * c - b * b) / (2 * c), y = Math.sqrt(Math.max(0, a * a - x * x));
+    return [[0, y], [c, y], [x, 0]];
 }
 
 function intersectLines(l1, l2) {
@@ -135,7 +141,6 @@ function generatePathData(pts, offset, radii, scale, offX, offY) {
         const e1 = edges[(i + n - 1) % n], e2 = edges[i];
         const r = radii[i] * scale;
         const R_off = Math.max(0, r + offset);
-
         const C_off = intersectLines(e1.offL, e2.offL);
 
         let cross = e1.vx * e2.vy - e1.vy * e2.vx;
@@ -178,11 +183,11 @@ function updateBandingUI(radii) {
 
     const allCb = document.getElementById("bandAll");
     const secCbs = document.querySelectorAll(".band-sec");
-    allCb.addEventListener("change", (e) => { secCbs.forEach(cb => cb.checked = e.target.checked); validateRadii(); drawTrapezium(); });
-    secCbs.forEach(cb => { cb.addEventListener("change", () => { allCb.checked = Array.from(secCbs).every(c => c.checked); validateRadii(); drawTrapezium(); }); });
+    allCb.addEventListener("change", (e) => { secCbs.forEach(cb => cb.checked = e.target.checked); validateRadii(); drawTriangle(); });
+    secCbs.forEach(cb => { cb.addEventListener("change", () => { allCb.checked = Array.from(secCbs).every(c => c.checked); validateRadii(); drawTriangle(); }); });
 }
 
-function drawTrapezium(targetCanvas = null) {
+function drawTriangle(targetCanvas = null) {
     const canvas = targetCanvas || document.getElementById("canvas"), ctx = canvas.getContext("2d");
     if (!targetCanvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -191,7 +196,7 @@ function drawTrapezium(targetCanvas = null) {
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
     const shapeW = Math.max(...xs) - Math.min(...xs), shapeH = Math.max(...ys) - Math.min(...ys);
     
-    const margin = 120;
+    const margin = 150;
     const scale = Math.min((canvas.width - margin * 2) / (shapeW || 1), (canvas.height - margin * 2) / (shapeH || 1));
     const offX = (canvas.width - shapeW * scale) / 2 - Math.min(...xs) * scale;
     const offY = (canvas.height - shapeH * scale) / 2 - Math.min(...ys) * scale;
@@ -200,8 +205,8 @@ function drawTrapezium(targetCanvas = null) {
 
     ctx.beginPath();
     ctx.moveTo(outline[0].EndPt.x, outline[0].EndPt.y);
-    for (let i = 1; i <= 4; i++) {
-        const seg = outline[i % 4];
+    for (let i = 1; i <= 3; i++) {
+        const seg = outline[i % 3];
         ctx.lineTo(seg.StartPt.x, seg.StartPt.y);
         if (seg.R_off > 0) ctx.arcTo(seg.C_off.x, seg.C_off.y, seg.EndPt.x, seg.EndPt.y, seg.R_off);
     }
@@ -210,12 +215,12 @@ function drawTrapezium(targetCanvas = null) {
 
     const bandingControls = document.getElementById("dynamic-banding-controls");
     if (bandingControls && bandingControls.children.length > 0) {
-        const banding = generatePathData(pts, 12, radii, scale, offX, offY); // Visually clean parallel offset
+        const banding = generatePathData(pts, 12, radii, scale, offX, offY);
         currentSections.forEach((sec, sIdx) => {
             const cb = document.getElementById(`bandSec${sIdx}`);
             if (cb && cb.checked) {
                 ctx.beginPath();
-                let prevEdge = (sec[0] + 3) % 4;
+                let prevEdge = (sec[0] + 2) % 3;
                 ctx.moveTo(banding[prevEdge].EndPt.x, banding[prevEdge].EndPt.y);
                 ctx.strokeStyle = bandingColors[sIdx % bandingColors.length]; ctx.lineWidth = 4;
                 sec.forEach((i) => {
@@ -276,15 +281,14 @@ function downloadPNG() {
     const tempCanvas = document.createElement("canvas"); tempCanvas.width = screenCanvas.width * scaleFactor; tempCanvas.height = screenCanvas.height * scaleFactor;
     const tctx = tempCanvas.getContext("2d"); tctx.scale(scaleFactor, scaleFactor);
     tctx.fillStyle = "#ffffff"; tctx.fillRect(0, 0, screenCanvas.width, screenCanvas.height);
-    drawTrapezium(tempCanvas);
-    const link = document.createElement("a"); link.download = (document.getElementById("fileName").value || "trapezium") + ".png"; link.href = tempCanvas.toDataURL("image/png"); link.click();
+    drawTriangle(tempCanvas);
+    const link = document.createElement("a"); link.download = (document.getElementById("fileName").value || "triangle") + ".png"; link.href = tempCanvas.toDataURL("image/png"); link.click();
 }
 
 function downloadDXF() {
     const rawPts = getPoints();
     const radii = getRadii();
     const maxY = Math.max(...rawPts.map(p => p[1]));
-    // Map to standard Cartesian layout for perfect DXF curves
     const pts = rawPts.map(p => ({ x: p[0], y: maxY - p[1] })); 
     const dxfPts = computeDXFVertices(pts, radii);
 
@@ -292,5 +296,5 @@ function downloadDXF() {
     dxfPts.forEach(p => { dxf.push("  0", "VERTEX", "  8", "0", " 10", p.x.toFixed(4), " 20", p.y.toFixed(4), " 42", p.bulge.toFixed(8)); });
     dxf.push("  0", "SEQEND", "  0", "ENDSEC", "  0", "EOF");
     const blob = new Blob([dxf.join("\r\n")], { type: "application/dxf" });
-    const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = (document.getElementById("fileName").value || "trapezium") + ".dxf"; link.click();
+    const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = (document.getElementById("fileName").value || "triangle") + ".dxf"; link.click();
 }
