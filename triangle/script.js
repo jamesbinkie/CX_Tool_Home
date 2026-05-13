@@ -1,23 +1,18 @@
-let highlightedCorner = -1;
 let currentSections = [];
 const bandingColors = ["#e74c3c", "#3498db", "#2ecc71"];
 
 window.onload = () => {
-    const ids = ["type", "isSymmetric", "W", "H", "sideA", "sideB", "sideC", "rad0", "rad1", "rad2"];
-    ids.forEach(id => {
+    const inputs = ["type", "isSymmetric", "W", "H", "sideA", "sideB", "sideC", "rad0", "rad1", "rad2"];
+    inputs.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            el.addEventListener("change", () => { updateUI(); });
-            if (el.tagName === "INPUT") {
-                el.addEventListener("input", () => { updateUI(); });
-                el.addEventListener("blur", (e) => { validateAndClamp(); updateUI(); });
+            if (el.tagName === "INPUT" && el.type === "number") {
+                el.addEventListener("input", () => { drawTriangle(); });
+                el.addEventListener("blur", () => { validateAndClamp(); updateUI(); });
+            } else {
+                el.addEventListener("change", () => { validateAndClamp(); updateUI(); });
             }
         }
-    });
-
-    document.querySelectorAll('.corner-input-wrap').forEach(wrap => {
-        wrap.addEventListener('mouseenter', () => { highlightedCorner = parseInt(wrap.dataset.corner); drawTriangle(); });
-        wrap.addEventListener('mouseleave', () => { highlightedCorner = -1; drawTriangle(); });
     });
     updateUI();
 };
@@ -30,8 +25,7 @@ function updateUI() {
     document.getElementById("abc-controls").style.display = (type === "standard" && !isSym) ? "flex" : "none";
     
     refreshHintsAndWarnings();
-    const outlineData = generatePathData(0);
-    updateBandingUI(outlineData);
+    updateBandingUI(getRadii());
     validateRadii();
     drawTriangle();
 }
@@ -57,31 +51,42 @@ function validateAndClamp() {
     }
 }
 
+function getRadii() {
+    return [parseFloat(document.getElementById("rad0").value) || 0, parseFloat(document.getElementById("rad1").value) || 0, parseFloat(document.getElementById("rad2").value) || 0];
+}
+
 function validateRadii() {
     let conflict = false;
-    for(let i=0; i<3; i++) {
+    const radii = getRadii();
+    for (let i = 0; i < 3; i++) {
         let rEl = document.getElementById(`rad${i}`);
         let val = parseFloat(rEl.value) || 0;
+        if (val === 0) continue;
+
         let isBanded = false;
+        const prevEdge = (i + 2) % 3; // Corner connects prev edge and current edge
         currentSections.forEach((sec, sIdx) => {
             const cb = document.getElementById(`bandSec${sIdx}`);
-            if (cb && cb.checked) { if(sec.includes((i+2)%3) || sec.includes(i)) isBanded = true; }
+            if (cb && cb.checked && (sec.includes(i) || sec.includes(prevEdge))) isBanded = true;
         });
-        if (isBanded && val > 0 && val < 50) { rEl.value = 50; conflict = true; }
+
+        if (isBanded && val > 0 && val < 50) {
+            rEl.value = 50;
+            conflict = true;
+        }
     }
     document.getElementById("radiusWarning").style.display = conflict ? "block" : "none";
 }
 
 function refreshHintsAndWarnings() {
     const pts = getPoints();
-    const w = Math.max(...pts.map(p=>p[0])) - Math.min(...pts.map(p=>p[0]));
-    const h = Math.max(...pts.map(p=>p[1])) - Math.min(...pts.map(p=>p[1]));
+    const w = Math.max(...pts.map(p => p[0])) - Math.min(...pts.map(p => p[0]));
+    const h = Math.max(...pts.map(p => p[1])) - Math.min(...pts.map(p => p[1]));
     document.getElementById("sheetWarning").style.display = (Math.max(w, h) > 2400 || Math.min(w, h) > 1200) ? "block" : "none";
     
     let isBanded = false;
     currentSections.forEach((sec, i) => { if(document.getElementById(`bandSec${i}`)?.checked) isBanded = true; });
     
-    // Check angles
     const angles = [];
     for (let i = 0; i < 3; i++) {
         const p1 = pts[i], p0 = pts[(i + 2) % 3], p2 = pts[(i + 1) % 3];
@@ -103,67 +108,86 @@ function getPoints() {
     return [[0, y], [c, y], [x, 0]];
 }
 
-function generatePathData(offset) {
-    const pts = getPoints();
-    const canvas = document.getElementById("canvas");
-    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-    const shapeW = Math.max(...xs) - Math.min(...xs), shapeH = Math.max(...ys) - Math.min(...ys);
-    const margin = 150, scale = Math.min((canvas.width - margin * 2) / (shapeW || 1), (canvas.height - margin * 2) / (shapeH || 1));
-    const offX = (canvas.width - shapeW * scale) / 2 - Math.min(...xs) * scale, offY = (canvas.height - shapeH * scale) / 2 - Math.min(...ys) * scale;
-    
-    const cArr = pts.map((p, i) => ({ x: p[0] * scale + offX, y: p[1] * scale + offY, r: (parseFloat(document.getElementById(`rad${i}`).value) || 0) * scale }));
-
-    const data = [];
-    for (let i = 0; i < 3; i++) {
-        const prev = cArr[(i + 2) % 3], curr = cArr[i], next = cArr[(i + 1) % 3];
-        const dx1 = curr.x - prev.x, dy1 = curr.y - prev.y, l1 = Math.hypot(dx1, dy1) || 1;
-        const v1_x = dx1/l1, v1_y = dy1/l1;
-        const dx2 = next.x - curr.x, dy2 = next.y - curr.y, l2 = Math.hypot(dx2, dy2) || 1;
-        const v2_x = dx2/l2, v2_y = dy2/l2;
-
-        const N1_out = { x: -v1_y, y: v1_x }, N2_out = { x: -v2_y, y: v2_x };
-        const R = curr.r, R_off = Math.max(0, R + offset);
-        const C_off = { x: curr.x + N1_out.x * offset + N2_out.x * offset, y: curr.y + N1_out.y * offset + N2_out.y * offset };
-
-        let StartPt, EndPt, ArcMidPt;
-        if (R_off > 0) {
-            const Center_orig = { x: curr.x + N1_out.x * R + N2_out.x * R, y: curr.y + N1_out.y * R + N2_out.y * R };
-            StartPt = { x: Center_orig.x - N1_out.x * R_off, y: Center_orig.y - N1_out.y * R_off };
-            EndPt   = { x: Center_orig.x - N2_out.x * R_off, y: Center_orig.y - N2_out.y * R_off };
-            let mx = (StartPt.x + EndPt.x) / 2, my = (StartPt.y + EndPt.y) / 2;
-            let vx = mx - Center_orig.x, vy = my - Center_orig.y, vLen = Math.hypot(vx, vy) || 1;
-            ArcMidPt = { x: Center_orig.x + (vx/vLen)*R_off, y: Center_orig.y + (vy/vLen)*R_off };
-        } else { StartPt = C_off; EndPt = C_off; ArcMidPt = C_off; }
-        
-        data.push({ StartPt, EndPt, C_off, R_off, r_orig: R, ArcMidPt });
-    }
-    return { data, scale, offX, offY };
+function intersectLines(l1, l2) {
+    const denom = (l1.x1 - l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 - l2.x2);
+    if (Math.abs(denom) < 0.0001) return { x: l1.x2, y: l1.y2 };
+    return {
+        x: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.x1 - l2.x2) - (l1.x1 - l1.x2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom,
+        y: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom
+    };
 }
 
-function updateBandingUI(outline) {
+function generatePathData(pts, offset, radii, scale, offX, offY) {
+    const n = pts.length;
+    let area = 0;
+    for (let i = 0; i < n; i++) area += pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1];
+    const CW = area > 0 ? 1 : -1;
+
+    const cPts = pts.map(p => ({ x: p[0] * scale + offX, y: p[1] * scale + offY }));
+    const edges = [];
+    
+    for (let i = 0; i < n; i++) {
+        const p1 = cPts[i], p2 = cPts[(i + 1) % n];
+        let vx = p2.x - p1.x, vy = p2.y - p1.y;
+        let len = Math.hypot(vx, vy) || 1;
+        vx /= len; vy /= len;
+        let nx = vy * CW, ny = -vx * CW;
+        edges.push({
+            offL: { x1: p1.x + nx * offset, y1: p1.y + ny * offset, x2: p2.x + nx * offset, y2: p2.y + ny * offset }
+        });
+    }
+
+    const data = [];
+    for (let i = 0; i < n; i++) {
+        const e1 = edges[(i + n - 1) % n], e2 = edges[i];
+        const C_off = intersectLines(e1.offL, e2.offL);
+        const r = radii[i] * scale;
+        const R_off = r > 0 ? r + offset : 0;
+        data.push({ C_off, R_off, r_orig: radii[i] });
+    }
+    return data;
+}
+
+function updateBandingUI(radii) {
+    const n = radii.length;
     let startIdx = 0;
-    for(let i=0; i<3; i++) if (outline.data[i].r_orig === 0) { startIdx = i; break; }
+    for (let i = 0; i < n; i++) if (radii[i] === 0) { startIdx = i; break; }
     
     let sections = []; let currSec = [];
-    for(let step=1; step<=3; step++) {
-        let i = (startIdx + step) % 3;
+    for (let step = 1; step <= n; step++) {
+        let i = (startIdx + step) % n;
         currSec.push(i);
-        if (outline.data[i].r_orig === 0 || step === 3) { sections.push(currSec); currSec = []; }
+        if (radii[i] === 0 || step === n) { sections.push(currSec); currSec = []; }
     }
-    currentSections = sections;
+    
     const container = document.getElementById("dynamic-banding-controls");
-    if (!container || container.children.length === sections.length + 1) return; 
+    if (JSON.stringify(currentSections) === JSON.stringify(sections) && container.children.length > 0) return;
+    
+    // Maintain checked state
+    let oldEdgeBanded = new Array(n).fill(true);
+    if (currentSections.length > 0 && container.children.length > 0) {
+        currentSections.forEach((sec, sIdx) => {
+            let cb = document.getElementById(`bandSec${sIdx}`);
+            let isChecked = cb ? cb.checked : true;
+            sec.forEach(edge => oldEdgeBanded[edge] = isChecked);
+        });
+    }
 
+    currentSections = sections;
     let html = `<label style="display: flex; align-items: center; gap: 5px; font-weight: bold;"><input type="checkbox" id="bandAll" checked> Band All</label>`;
     sections.forEach((sec, idx) => {
         let color = bandingColors[idx % bandingColors.length];
+        let shouldCheck = sec.some(edge => oldEdgeBanded[edge]);
         html += `<label style="display: flex; align-items: center; gap: 5px; border-bottom: 3px solid ${color}; padding-bottom: 2px;">
-                    <input type="checkbox" class="band-sec" id="bandSec${idx}" checked> Section ${idx+1}
+                    <input type="checkbox" class="band-sec" id="bandSec${idx}" ${shouldCheck ? "checked" : ""}> Section ${idx+1}
                  </label>`;
     });
     container.innerHTML = html;
 
-    const allCb = document.getElementById("bandAll"); const secCbs = document.querySelectorAll(".band-sec");
+    const allCb = document.getElementById("bandAll");
+    const secCbs = document.querySelectorAll(".band-sec");
+    allCb.checked = Array.from(secCbs).every(c => c.checked);
+
     allCb.addEventListener("change", (e) => { secCbs.forEach(cb => cb.checked = e.target.checked); validateRadii(); drawTriangle(); });
     secCbs.forEach(cb => { cb.addEventListener("change", () => { allCb.checked = Array.from(secCbs).every(c => c.checked); validateRadii(); drawTriangle(); }); });
 }
@@ -172,78 +196,128 @@ function drawTriangle(targetCanvas = null) {
     const canvas = targetCanvas || document.getElementById("canvas"), ctx = canvas.getContext("2d");
     if (!targetCanvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const outline = generatePathData(0);
+    const pts = getPoints();
+    const radii = getRadii();
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const shapeW = Math.max(...xs) - Math.min(...xs), shapeH = Math.max(...ys) - Math.min(...ys);
+    
+    const margin = 150;
+    const scale = Math.min((canvas.width - margin * 2) / (shapeW || 1), (canvas.height - margin * 2) / (shapeH || 1));
+    const offX = (canvas.width - shapeW * scale) / 2 - Math.min(...xs) * scale;
+    const offY = (canvas.height - shapeH * scale) / 2 - Math.min(...ys) * scale;
+    const n = pts.length;
 
+    // Draw main black outline
+    const outline = generatePathData(pts, 0, radii, scale, offX, offY);
     ctx.beginPath();
-    ctx.moveTo(outline.data[0].EndPt.x, outline.data[0].EndPt.y);
-    for(let i=1; i<=3; i++) {
-        const seg = outline.data[i%3];
-        ctx.lineTo(seg.StartPt.x, seg.StartPt.y);
-        if (seg.R_off > 0) ctx.arcTo(seg.C_off.x, seg.C_off.y, seg.EndPt.x, seg.EndPt.y, seg.R_off);
+    let midX = (outline[n - 1].C_off.x + outline[0].C_off.x) / 2;
+    let midY = (outline[n - 1].C_off.y + outline[0].C_off.y) / 2;
+    ctx.moveTo(midX, midY);
+    for (let i = 0; i <= n; i++) {
+        let b = outline[i % n];
+        let next_b = outline[(i + 1) % n];
+        if (b.r_orig > 0) ctx.arcTo(b.C_off.x, b.C_off.y, next_b.C_off.x, next_b.C_off.y, b.R_off);
+        else ctx.lineTo(b.C_off.x, b.C_off.y);
     }
     ctx.closePath();
-    ctx.lineWidth = Math.max(2, 3 * (ctx.canvas.width / 900)); ctx.strokeStyle = "#000"; ctx.stroke();
+    ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
+    // Draw banded sections
     const bandingControls = document.getElementById("dynamic-banding-controls");
     if (bandingControls && bandingControls.children.length > 0) {
-        const banding = generatePathData(10);
+        const banding = generatePathData(pts, 12, radii, scale, offX, offY);
         currentSections.forEach((sec, sIdx) => {
             const cb = document.getElementById(`bandSec${sIdx}`);
             if (cb && cb.checked) {
                 ctx.beginPath();
-                let firstEdge = sec[0], prevEdge = (firstEdge + 2) % 3;
-                ctx.moveTo(banding.data[prevEdge].EndPt.x, banding.data[prevEdge].EndPt.y);
-                ctx.strokeStyle = bandingColors[sIdx % bandingColors.length]; ctx.lineWidth = 4;
+                let firstEdge = sec[0];
+                let prevCorner = (firstEdge + n - 1) % n;
+                
+                let startMidX = (banding[prevCorner].C_off.x + banding[firstEdge].C_off.x) / 2;
+                let startMidY = (banding[prevCorner].C_off.y + banding[firstEdge].C_off.y) / 2;
+                ctx.moveTo(startMidX, startMidY);
+
+                ctx.strokeStyle = bandingColors[sIdx % bandingColors.length]; 
+                ctx.lineWidth = 4;
+                
                 sec.forEach((i) => {
-                    let b = banding.data[i];
-                    ctx.lineTo(b.StartPt.x, b.StartPt.y);
-                    if (b.r_orig > 0) {
-                        if (b.R_off > 0) ctx.arcTo(b.C_off.x, b.C_off.y, b.EndPt.x, b.EndPt.y, b.R_off);
-                        else ctx.lineTo(b.C_off.x, b.C_off.y);
-                    } else { ctx.lineTo(b.C_off.x, b.C_off.y); }
+                    let b = banding[i];
+                    let next_b = banding[(i + 1) % n];
+                    if (b.r_orig > 0) ctx.arcTo(b.C_off.x, b.C_off.y, next_b.C_off.x, next_b.C_off.y, b.R_off);
+                    else ctx.lineTo(b.C_off.x, b.C_off.y);
                 });
+                
+                let lastEdge = sec[sec.length - 1];
+                let nextCorner = (lastEdge + 1) % n;
+                let endMidX = (banding[lastEdge].C_off.x + banding[nextCorner].C_off.x) / 2;
+                let endMidY = (banding[lastEdge].C_off.y + banding[nextCorner].C_off.y) / 2;
+                ctx.lineTo(endMidX, endMidY);
+                
                 ctx.stroke();
             }
         });
     }
+}
 
-    if (highlightedCorner !== -1 && !targetCanvas) {
-        const cp = outline.data[highlightedCorner];
-        ctx.beginPath(); ctx.arc(cp.ArcMidPt.x, cp.ArcMidPt.y, 20, 0, Math.PI * 2); 
-        ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
+function computeDXFVertices(pts, radii) {
+    const n = pts.length;
+    let area = 0;
+    for (let i = 0; i < n; i++) area += pts[i].x * pts[(i + 1) % n].y - pts[(i + 1) % n].x * pts[i].y;
+    const CW = area > 0 ? 1 : -1;
+
+    const dxfPts = [];
+    for (let i = 0; i < n; i++) {
+        const p0 = pts[(i + n - 1) % n], p1 = pts[i], p2 = pts[(i + 1) % n];
+        const r = radii[i];
+        
+        let v1x = p1.x - p0.x, v1y = p1.y - p0.y;
+        let l1 = Math.hypot(v1x, v1y) || 1;
+        v1x /= l1; v1y /= l1;
+        
+        let v2x = p2.x - p1.x, v2y = p2.y - p1.y;
+        let l2 = Math.hypot(v2x, v2y) || 1;
+        v2x /= l2; v2y /= l2;
+
+        if (r > 0) {
+            let cross = v1x * v2y - v1y * v2x;
+            let dot = v1x * v2x + v1y * v2y;
+            let alpha = Math.atan2(cross, dot);
+
+            let d = r * Math.abs(Math.tan(alpha / 2));
+            let startX = p1.x - v1x * d;
+            let startY = p1.y - v1y * d;
+            let endX = p1.x + v2x * d;
+            let endY = p1.y + v2y * d;
+
+            let bulge = Math.tan(alpha / 4);
+
+            dxfPts.push({ x: startX, y: startY, bulge: bulge });
+            dxfPts.push({ x: endX, y: endY, bulge: 0 });
+        } else {
+            dxfPts.push({ x: p1.x, y: p1.y, bulge: 0 });
+        }
     }
+    return dxfPts;
 }
 
 function downloadPNG() {
-    const screenCanvas = document.getElementById("canvas"), tempCanvas = document.createElement("canvas");
-    tempCanvas.width = screenCanvas.width; tempCanvas.height = screenCanvas.height;
-    const tctx = tempCanvas.getContext("2d"); tctx.fillStyle = "#ffffff"; tctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    const screenCanvas = document.getElementById("canvas"), scaleFactor = Math.max(1, 4096 / screenCanvas.width);
+    const tempCanvas = document.createElement("canvas"); tempCanvas.width = screenCanvas.width * scaleFactor; tempCanvas.height = screenCanvas.height * scaleFactor;
+    const tctx = tempCanvas.getContext("2d"); tctx.scale(scaleFactor, scaleFactor);
+    tctx.fillStyle = "#ffffff"; tctx.fillRect(0, 0, screenCanvas.width, screenCanvas.height);
     drawTriangle(tempCanvas);
     const link = document.createElement("a"); link.download = (document.getElementById("fileName").value || "triangle") + ".png"; link.href = tempCanvas.toDataURL("image/png"); link.click();
 }
 
 function downloadDXF() {
-    const pts = getPoints();
-    const R = [parseFloat(document.getElementById("rad0").value)||0, parseFloat(document.getElementById("rad1").value)||0, parseFloat(document.getElementById("rad2").value)||0];
-    const dxfPts = [];
-    
-    for(let i=0; i<3; i++) {
-        const prev = pts[(i+2)%3], curr = pts[i], next = pts[(i+1)%3], r = R[i];
-        if (r > 0) {
-            let dx1 = prev[0] - curr[0], dy1 = prev[1] - curr[1], l1 = Math.hypot(dx1, dy1) || 1;
-            let p_start = { x: curr[0] + (dx1/l1)*r, y: curr[1] + (dy1/l1)*r };
-            let dx2 = next[0] - curr[0], dy2 = next[1] - curr[1], l2 = Math.hypot(dx2, dy2) || 1;
-            let p_end = { x: curr[0] + (dx2/l2)*r, y: curr[1] + (dy2/l2)*r };
-            dxfPts.push({ x: p_start.x, y: p_start.y, bulge: 0.41421356 }); 
-            dxfPts.push({ x: p_end.x, y: p_end.y, bulge: 0 });
-        } else {
-            dxfPts.push({ x: curr[0], y: curr[1], bulge: 0 });
-        }
-    }
-    
-    const maxY = Math.max(...pts.map(p => p[1]));
+    const rawPts = getPoints();
+    const radii = getRadii();
+    const maxY = Math.max(...rawPts.map(p => p[1]));
+    const pts = rawPts.map(p => ({ x: p[0], y: maxY - p[1] })); 
+    const dxfPts = computeDXFVertices(pts, radii);
+
     let dxf = ["  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES", "  0", "POLYLINE", "  8", "0", " 66", "1", " 70", "1"];
-    dxfPts.forEach(p => { dxf.push("  0", "VERTEX", "  8", "0", " 10", p.x.toFixed(4), " 20", (maxY - p.y).toFixed(4), " 42", p.bulge.toFixed(8)); });
+    dxfPts.forEach(p => { dxf.push("  0", "VERTEX", "  8", "0", " 10", p.x.toFixed(4), " 20", p.y.toFixed(4), " 42", p.bulge.toFixed(8)); });
     dxf.push("  0", "SEQEND", "  0", "ENDSEC", "  0", "EOF");
     const blob = new Blob([dxf.join("\r\n")], { type: "application/dxf" });
     const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = (document.getElementById("fileName").value || "triangle") + ".dxf"; link.click();
