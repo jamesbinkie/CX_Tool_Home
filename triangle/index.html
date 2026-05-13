@@ -19,6 +19,14 @@
     }
     #abc-controls, #wh-controls { display: none; }
     .range { font-size: 11px; color: #009fe3; margin-top: 4px; }
+    .panel-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+    @media (max-width: 900px) { .panel-row { grid-template-columns: 1fr; } }
+    .panel h3 { margin-top: 0; margin-bottom: 15px; padding-bottom: 8px; border-bottom: 1px solid #4f545c; color: #fff; font-size: 1.1rem; }
+    .corner-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px 20px; }
+    .corner-input-wrap { display: flex; flex-direction: column; }
+    .corner-input-wrap label { font-size: 12px; color: #b5bac1; margin-bottom: 5px; font-weight: bold; }
+    .corner-input-wrap input { width: 100%; font-size: 15px; font-weight: 600; background: #1e1f22; border: 1px solid #1e1f22; color: #f2f3f5; border-radius: 6px; padding: 8px 12px; box-sizing: border-box; }
+    .corner-input-wrap input:focus { border-color: #009fe3; outline: none; }
   </style>
 </head>
 
@@ -31,78 +39,68 @@
 <div class="container">
   <h2>Triangle Generator (mm)</h2>
 
-  <div id="safetyWarning" class="warning-box">
-    ⚠️ Corner angle is less than 30°: Too tight for edge banding!
-  </div>
+  <div id="safetyWarning" class="warning-box">⚠️ Corner angle is less than 30°: Too tight for edge banding!</div>
+  <div id="sheetWarning" class="warning-box">⚠️ Part exceeds maximum sheet size (2400 x 1200 mm).</div>
+  <div id="radiusWarning" class="warning-box" style="border-color: #e74c3c;">⚠️ Radii updated! Ensure banded corners have at least 50mm radius.</div>
 
-  <div id="sheetWarning" class="warning-box">
-    ⚠️ Part exceeds maximum sheet size (2400 x 1200 mm).
-  </div>
+  <div class="panel-row">
+    <div class="controls panel">
+      <h3>Dimensions</h3>
+      <label style="margin-bottom: 15px;">Type:
+        <select id="type">
+          <option value="right">Right triangle</option>
+          <option value="left">Left Triangle</option>
+          <option value="standard">Triangle</option>
+        </select>
+      </label>
 
-  <div class="controls panel">
-    <label>Type:
-      <select id="type">
-        <option value="right">Right triangle</option>
-        <option value="left">Left Triangle</option>
-        <option value="standard">Triangle</option>
-      </select>
-    </label>
+      <div id="wh-controls" style="display: flex; gap: 20px;">
+          <label>Width (W):<input id="W" type="number" value="500" onclick="this.select()"><div class="range" id="rangeW">Min 200 mm — Max 2400 mm</div></label>
+          <label>Height (H):<input id="H" type="number" value="500" onclick="this.select()"><div class="range" id="rangeH">Min 200 mm — Max 2400 mm</div></label>
+      </div>
 
-    <div id="wh-controls" style="display: flex; gap: 20px;">
-        <label>Width (W):
-            <input id="W" type="number" value="500" onclick="this.select()">
-            <div class="range" id="rangeW">Min 200 mm — Max 2400 mm</div>
-        </label>
-        <label>Height (H):
-            <input id="H" type="number" value="500" onclick="this.select()">
-            <div class="range" id="rangeH">Min 200 mm — Max 2400 mm</div>
-        </label>
+      <div id="standard-toggle-wrap" style="display: none; align-items: center; padding-top: 15px;">
+          <label style="flex-direction: row; align-items: center; min-width: auto; gap: 10px;"><input type="checkbox" id="isSymmetric" checked> Symmetric</label>
+      </div>
+
+      <div id="abc-controls" style="display: none; gap: 20px;">
+          <label>Side A (Right): <input id="sideA" type="number" value="500" onclick="this.select()"></label>
+          <label>Side B (Left): <input id="sideB" type="number" value="500" onclick="this.select()"></label>
+          <label>Side C (Btm): <input id="sideC" type="number" value="600" onclick="this.select()"></label>
+      </div>
     </div>
 
-    <div id="standard-toggle-wrap" style="display: none; align-items: center; padding-top: 25px;">
-        <label style="flex-direction: row; align-items: center; min-width: auto; gap: 10px;">
-            <input type="checkbox" id="isSymmetric" checked> Symmetric
-        </label>
-    </div>
-
-    <div id="abc-controls" style="display: none; gap: 20px;">
-        <label>Side A (Right): 
-            <input id="sideA" type="number" value="500" onclick="this.select()">
-            <div class="range">Min 200 mm</div>
-        </label>
-        <label>Side B (Left): 
-            <input id="sideB" type="number" value="500" onclick="this.select()">
-            <div class="range">Min 200 mm</div>
-        </label>
-        <label>Side C (Bottom): 
-            <input id="sideC" type="number" value="600" onclick="this.select()">
-            <div class="range">Max 2400 mm</div>
-        </label>
+    <div class="panel">
+      <h3>Corner Radii</h3>
+      <p style="font-size: 11px; color: #b5bac1; margin-top: -5px; margin-bottom: 12px;">Min 50mm if banding flows through.</p>
+      <div class="corner-grid">
+          <div class="corner-input-wrap" data-corner="0"><label>Corner 1 (Top)</label><input type="number" id="rad0" value="0" min="0"></div>
+          <div class="corner-input-wrap" data-corner="1"><label>Corner 2 (Btm R)</label><input type="number" id="rad1" value="0" min="0"></div>
+          <div class="corner-input-wrap" data-corner="2"><label>Corner 3 (Btm L)</label><input type="number" id="rad2" value="0" min="0"></div>
+      </div>
     </div>
   </div>
 
-  <h3>Edge Banding</h3>
-  <div class="edge-controls panel">
-    <label><input type="checkbox" id="bandBottom"> Bottom</label>
-    <label><input type="checkbox" id="bandRight"> Right</label>
-    <label><input type="checkbox" id="bandLeft"> Left</label>
-  </div>
+  <div class="panel-row">
+    <div class="edge-controls panel">
+      <h3>Edge Banding</h3>
+      <div id="dynamic-banding-controls" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center;"></div>
+    </div>
 
-  <h3>Export</h3>
-  <div class="file-controls panel" style="display: flex; align-items: flex-end; gap: 20px;">
-    <label>File Name:
-      <input id="fileName" type="text" value="triangle">
-    </label>
-    <button onclick="downloadPNG()">Download PNG</button>
-    <button onclick="downloadDXF()">Download DXF</button>
+    <div class="file-controls panel">
+      <h3>Export Part</h3>
+      <div style="display: flex; align-items: flex-end; gap: 15px; flex-wrap: wrap;">
+        <label style="flex: 1; min-width: 150px;">File Name: <input id="fileName" type="text" value="triangle" style="width: 100%;"></label>
+        <button onclick="downloadPNG()">Download PNG</button>
+        <button onclick="downloadDXF()">Download DXF</button>
+      </div>
+    </div>
   </div>
 
   <canvas id="canvas" width="900" height="600"></canvas>
 </div>
 
-<div id="versionLabel">v2.5.2</div>
-
+<div id="versionLabel">v3.0.0</div>
 <script src="script.js"></script>
-
 </body>
 </html>
