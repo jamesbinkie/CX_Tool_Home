@@ -1,5 +1,6 @@
 let currentSections = [];
 const bandingColors = ["#e74c3c", "#3498db", "#2ecc71"];
+const edgeNames = ["Bottom", "Right", "Left"];
 
 window.onload = () => {
     const inputs = ["type", "isSymmetric", "W", "H", "sideA", "sideB", "sideC", "rad0", "rad1", "rad2"];
@@ -52,7 +53,11 @@ function validateAndClamp() {
 }
 
 function getRadii() {
-    return [parseFloat(document.getElementById("rad0").value) || 0, parseFloat(document.getElementById("rad1").value) || 0, parseFloat(document.getElementById("rad2").value) || 0];
+    return [
+        parseFloat(document.getElementById("rad0").value) || 0, 
+        parseFloat(document.getElementById("rad1").value) || 0, 
+        parseFloat(document.getElementById("rad2").value) || 0
+    ];
 }
 
 function validateRadii() {
@@ -64,10 +69,9 @@ function validateRadii() {
         if (val === 0) continue;
 
         let isBanded = false;
-        const prevEdge = (i + 2) % 3; // Corner connects prev edge and current edge
         currentSections.forEach((sec, sIdx) => {
             const cb = document.getElementById(`bandSec${sIdx}`);
-            if (cb && cb.checked && (sec.includes(i) || sec.includes(prevEdge))) isBanded = true;
+            if (cb && cb.checked && sec.includes(i)) isBanded = true;
         });
 
         if (isBanded && val > 0 && val < 50) {
@@ -133,19 +137,32 @@ function generatePathData(pts, offset, radii, scale, offX, offY) {
         vx /= len; vy /= len;
         let nx = vy * CW, ny = -vx * CW;
         edges.push({
+            vx, vy, nx, ny,
             offL: { x1: p1.x + nx * offset, y1: p1.y + ny * offset, x2: p2.x + nx * offset, y2: p2.y + ny * offset }
         });
     }
 
-    const data = [];
+    const corners = [];
     for (let i = 0; i < n; i++) {
-        const e1 = edges[(i + n - 1) % n], e2 = edges[i];
-        const C_off = intersectLines(e1.offL, e2.offL);
+        const ePrev = edges[(i + n - 1) % n], eNext = edges[i];
+        const C_off = intersectLines(ePrev.offL, eNext.offL);
         const r = radii[i] * scale;
         const R_off = r > 0 ? r + offset : 0;
-        data.push({ C_off, R_off, r_orig: radii[i] });
+        
+        let d = 0;
+        if (R_off > 0) {
+            let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx;
+            let dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy;
+            let alpha = Math.atan2(cross, dot);
+            d = R_off * Math.abs(Math.tan(alpha / 2));
+        }
+        
+        let arcStart = { x: C_off.x - ePrev.vx * d, y: C_off.y - ePrev.vy * d };
+        let arcEnd = { x: C_off.x + eNext.vx * d, y: C_off.y + eNext.vy * d };
+
+        corners.push({ C_off, R_off, r_orig: radii[i], arcStart, arcEnd });
     }
-    return data;
+    return { corners, edges };
 }
 
 function updateBandingUI(radii) {
@@ -154,16 +171,16 @@ function updateBandingUI(radii) {
     for (let i = 0; i < n; i++) if (radii[i] === 0) { startIdx = i; break; }
     
     let sections = []; let currSec = [];
-    for (let step = 1; step <= n; step++) {
-        let i = (startIdx + step) % n;
-        currSec.push(i);
-        if (radii[i] === 0 || step === n) { sections.push(currSec); currSec = []; }
+    for (let step = 0; step < n; step++) {
+        let edgeIdx = (startIdx + step) % n;
+        currSec.push(edgeIdx);
+        let nextCorner = (edgeIdx + 1) % n;
+        if (radii[nextCorner] === 0 || step === n - 1) { sections.push(currSec); currSec = []; }
     }
     
     const container = document.getElementById("dynamic-banding-controls");
     if (JSON.stringify(currentSections) === JSON.stringify(sections) && container.children.length > 0) return;
     
-    // Maintain checked state
     let oldEdgeBanded = new Array(n).fill(true);
     if (currentSections.length > 0 && container.children.length > 0) {
         currentSections.forEach((sec, sIdx) => {
@@ -177,9 +194,10 @@ function updateBandingUI(radii) {
     let html = `<label style="display: flex; align-items: center; gap: 5px; font-weight: bold;"><input type="checkbox" id="bandAll" checked> Band All</label>`;
     sections.forEach((sec, idx) => {
         let color = bandingColors[idx % bandingColors.length];
+        let names = sec.map(e => edgeNames[e]).join(" + ");
         let shouldCheck = sec.some(edge => oldEdgeBanded[edge]);
         html += `<label style="display: flex; align-items: center; gap: 5px; border-bottom: 3px solid ${color}; padding-bottom: 2px;">
-                    <input type="checkbox" class="band-sec" id="bandSec${idx}" ${shouldCheck ? "checked" : ""}> Section ${idx+1}
+                    <input type="checkbox" class="band-sec" id="bandSec${idx}" ${shouldCheck ? "checked" : ""}> ${names}
                  </label>`;
     });
     container.innerHTML = html;
@@ -207,52 +225,47 @@ function drawTriangle(targetCanvas = null) {
     const offY = (canvas.height - shapeH * scale) / 2 - Math.min(...ys) * scale;
     const n = pts.length;
 
-    // Draw main black outline
-    const outline = generatePathData(pts, 0, radii, scale, offX, offY);
+    const baseData = generatePathData(pts, 0, radii, scale, offX, offY);
+    const crns = baseData.corners;
+
     ctx.beginPath();
-    let midX = (outline[n - 1].C_off.x + outline[0].C_off.x) / 2;
-    let midY = (outline[n - 1].C_off.y + outline[0].C_off.y) / 2;
-    ctx.moveTo(midX, midY);
-    for (let i = 0; i <= n; i++) {
-        let b = outline[i % n];
-        let next_b = outline[(i + 1) % n];
-        if (b.r_orig > 0) ctx.arcTo(b.C_off.x, b.C_off.y, next_b.C_off.x, next_b.C_off.y, b.R_off);
-        else ctx.lineTo(b.C_off.x, b.C_off.y);
+    ctx.moveTo(crns[0].arcStart.x, crns[0].arcStart.y);
+    for (let i = 0; i < n; i++) {
+        let c = crns[i];
+        if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
+        else ctx.lineTo(c.C_off.x, c.C_off.y);
+        
+        let next_c = crns[(i + 1) % n];
+        ctx.lineTo(next_c.arcStart.x, next_c.arcStart.y);
     }
     ctx.closePath();
     ctx.lineWidth = 2.5; ctx.strokeStyle = "#000"; ctx.stroke();
 
-    // Draw banded sections
     const bandingControls = document.getElementById("dynamic-banding-controls");
     if (bandingControls && bandingControls.children.length > 0) {
-        const banding = generatePathData(pts, 12, radii, scale, offX, offY);
+        const bandData = generatePathData(pts, 12, radii, scale, offX, offY);
+        const bCrns = bandData.corners;
+
         currentSections.forEach((sec, sIdx) => {
             const cb = document.getElementById(`bandSec${sIdx}`);
             if (cb && cb.checked) {
                 ctx.beginPath();
-                let firstEdge = sec[0];
-                let prevCorner = (firstEdge + n - 1) % n;
+                let firstCorner = sec[0]; 
+                ctx.moveTo(bCrns[firstCorner].arcEnd.x, bCrns[firstCorner].arcEnd.y);
                 
-                let startMidX = (banding[prevCorner].C_off.x + banding[firstEdge].C_off.x) / 2;
-                let startMidY = (banding[prevCorner].C_off.y + banding[firstEdge].C_off.y) / 2;
-                ctx.moveTo(startMidX, startMidY);
-
                 ctx.strokeStyle = bandingColors[sIdx % bandingColors.length]; 
                 ctx.lineWidth = 4;
                 
-                sec.forEach((i) => {
-                    let b = banding[i];
-                    let next_b = banding[(i + 1) % n];
-                    if (b.r_orig > 0) ctx.arcTo(b.C_off.x, b.C_off.y, next_b.C_off.x, next_b.C_off.y, b.R_off);
-                    else ctx.lineTo(b.C_off.x, b.C_off.y);
+                sec.forEach((edgeIdx, idx) => {
+                    let nextCorner = (edgeIdx + 1) % n;
+                    let c = bCrns[nextCorner];
+                    
+                    ctx.lineTo(c.arcStart.x, c.arcStart.y);
+                    if (idx < sec.length - 1) { 
+                        if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
+                        else ctx.lineTo(c.C_off.x, c.C_off.y);
+                    }
                 });
-                
-                let lastEdge = sec[sec.length - 1];
-                let nextCorner = (lastEdge + 1) % n;
-                let endMidX = (banding[lastEdge].C_off.x + banding[nextCorner].C_off.x) / 2;
-                let endMidY = (banding[lastEdge].C_off.y + banding[nextCorner].C_off.y) / 2;
-                ctx.lineTo(endMidX, endMidY);
-                
                 ctx.stroke();
             }
         });
@@ -288,7 +301,6 @@ function computeDXFVertices(pts, radii) {
             let startY = p1.y - v1y * d;
             let endX = p1.x + v2x * d;
             let endY = p1.y + v2y * d;
-
             let bulge = Math.tan(alpha / 4);
 
             dxfPts.push({ x: startX, y: startY, bulge: bulge });
