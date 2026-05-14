@@ -63,14 +63,15 @@ function validateRadii() {
     
     const legW = parseFloat(document.getElementById("legW").value) || 300;
     const legH = parseFloat(document.getElementById("legH").value) || 300;
-    const maxR0 = (legW + legH) - Math.sqrt(2 * legW * legH);
-    if (radii[0] > maxR0) {
-        radii[0] = Math.floor(maxR0);
+    
+    let maxR3 = Math.min(legW, legH) - 1;
+    if (radii[3] > maxR3) {
+        radii[3] = Math.floor(maxR3);
         changed = true;
     }
     
     for (let i = 0; i < n; i++) {
-        if (isCornerBanded(i, n) && radii[i] < 50) { 
+        if (isCornerBanded(i, n) && radii[i] > 0 && radii[i] < 50) { 
             radii[i] = 50; 
             conflict = true; 
         }
@@ -94,8 +95,8 @@ function validateRadii() {
         let clamped = false;
         for (let i = 0; i < n; i++) {
             let r1 = radii[i], r2 = radii[(i + 1) % n];
-            let minR1 = (isCornerBanded(i, n)) ? 50 : 0;
-            let minR2 = (isCornerBanded((i + 1) % n, n)) ? 50 : 0;
+            let minR1 = (r1 > 0 && isCornerBanded(i, n)) ? 50 : 0;
+            let minR2 = (r2 > 0 && isCornerBanded((i + 1) % n, n)) ? 50 : 0;
             
             let d1 = r1 * alphas[i], d2 = r2 * alphas[(i + 1) % n];
             let len = edges[i].len;
@@ -123,7 +124,7 @@ function validateRadii() {
     
     const warnEl = document.getElementById("radiusWarning");
     warnEl.style.display = (conflict || changed) ? "block" : "none";
-    if (conflict) warnEl.innerHTML = "⚠️ Radii adjusted! Banded corners ideally need 50mm+ radius, but may cause overlapping on small edges.";
+    if (conflict) warnEl.innerHTML = "⚠️ Radii adjusted! Banded corners must be 0mm (sharp joint) or 50mm+ radius to flex.";
     else if (changed) warnEl.innerHTML = "⚠️ Radii scaled down to prevent corners overlapping.";
 }
 
@@ -242,14 +243,13 @@ function updateBandingUI(radii) {
         if (radii[nextCorner] === 0 || step === n - 1) { sections.push(currSec); currSec = []; }
     }
     const container = document.getElementById("dynamic-banding-controls");
-    if (JSON.stringify(currentSections) === JSON.stringify(sections) && container.children.length > 0) return;
-    let oldEdgeBanded = new Array(n).fill(true);
+    let oldEdgeBanded = new Array(n).fill(false);
     if (currentSections.length > 0 && container.children.length > 0) {
-        currentSections.forEach((sec, sIdx) => { const cb = document.getElementById(`bandSec${sIdx}`); let isChecked = cb ? cb.checked : true; sec.forEach(edge => oldEdgeBanded[edge] = isChecked); });
+        currentSections.forEach((sec, sIdx) => { const cb = document.getElementById(`bandSec${sIdx}`); let isChecked = cb ? cb.checked : false; sec.forEach(edge => oldEdgeBanded[edge] = isChecked); });
     }
     currentSections = sections; const edgeNames = getEdgeNames();
     
-    let html = `<label style="grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; font-weight: bold; margin-bottom: 5px;"><input type="checkbox" id="bandAll" checked> Band All</label>`;
+    let html = `<label style="grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; font-weight: bold; margin-bottom: 5px;"><input type="checkbox" id="bandAll"> Band All</label>`;
     
     sections.forEach((sec, idx) => {
         let color = bandingColors[idx % bandingColors.length], names = sec.map(e => edgeNames[e]).join(" + "), shouldCheck = sec.some(edge => oldEdgeBanded[edge]);
@@ -344,11 +344,11 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
     const n = corners.length;
     const pushLine = (p1, p2) => {
         if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.001) return;
-        dxf.push("  0", "LINE", "  8", layer, " 10", p1.x.toFixed(4), " 20", p1.y.toFixed(4), " 11", p2.x.toFixed(4), " 21", p2.y.toFixed(4));
+        dxf.push("  0", "LINE", "  8", layer, " 10", p1.x.toFixed(8), " 20", p1.y.toFixed(8), " 11", p2.x.toFixed(8), " 21", p2.y.toFixed(8));
     };
     const pushArc = (c) => {
         if (c.R_off <= 0.001) return;
-        dxf.push("  0", "ARC", "  8", layer, " 10", c.arcCenter.x.toFixed(4), " 20", c.arcCenter.y.toFixed(4), " 40", c.R_off.toFixed(4), " 50", c.dxfStart.toFixed(4), " 51", c.dxfEnd.toFixed(4));
+        dxf.push("  0", "ARC", "  8", layer, " 10", c.arcCenter.x.toFixed(8), " 20", c.arcCenter.y.toFixed(8), " 40", c.R_off.toFixed(8), " 50", c.dxfStart.toFixed(8), " 51", c.dxfEnd.toFixed(8));
     };
 
     if (isClosed) {
