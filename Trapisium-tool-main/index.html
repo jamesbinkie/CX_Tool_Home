@@ -6,25 +6,11 @@
   <link rel="icon" type="image/png" href="../favicon.png">
   <link rel="stylesheet" href="../style.css">
   <style>
-    .warning-box {
-      display: none;
-      background: #313338; 
-      color: #f2f3f5;
-      padding: 15px;
-      border-radius: 10px;
-      margin-bottom: 20px;
-      font-weight: 600;
-      border: 4px solid #f39c12;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-    }
+    .warning-box { display: none; background: #313338; color: #f2f3f5; padding: 15px; border-radius: 10px; font-weight: 600; border: 4px solid #f39c12; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
     #radiusWarning { border-color: #e74c3c; }
-    .panel-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
-    @media (max-width: 900px) { .panel-row { grid-template-columns: 1fr; } }
-    .panel h3 { margin-top: 0; margin-bottom: 15px; padding-bottom: 8px; border-bottom: 1px solid #4f545c; color: #fff; font-size: 1.1rem; }
     .corner-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px 20px; }
     .corner-input-wrap { display: flex; flex-direction: column; }
     .corner-input-wrap label { font-size: 12px; color: #b5bac1; margin-bottom: 5px; font-weight: bold; }
-    .corner-input-wrap input { width: 100%; font-size: 15px; font-weight: 600; background: #1e1f22; border: 1px solid #1e1f22; color: #f2f3f5; border-radius: 6px; padding: 8px 12px; box-sizing: border-box; }
     .corner-input-wrap input:focus { border-color: #009fe3; outline: none; }
   </style>
 </head>
@@ -34,72 +20,56 @@
   <button onclick="window.location.href='../index.html'" style="background: #4f545c;">← Back to Home</button>
 </div>
 
-<div class="landing-container" style="text-align: left; padding: 0;">
+<div class="container">
   <h2>Trapezium Generator (mm)</h2>
+  <div id="radiusWarning" class="warning-box">⚠️ Corner radii adjusted! Ensure banded corners have at least a 50mm radius.</div>
 
-  <div id="radiusWarning" class="warning-box">
-    ⚠️ Corner radii adjusted! Ensure banded corners have at least a 50mm radius.
-  </div>
-
-  <div class="panel-row">
-    <div class="controls panel">
-      <h3>Dimensions</h3>
-      <div style="display: flex; flex-wrap: wrap; gap: 15px 25px;">
-        <label>Type:
-          <select id="type">
-            <option value="regular">Regular</option>
-            <option value="right">Right</option>
-            <option value="irregular">Irregular</option>
-          </select>
-        </label>
-        <label>A (Height):
-          <input id="A" type="number" value="500" min="100" max="2440" onclick="this.select()">
-          <div class="range">Min 100 mm — Max 2440 mm</div>
-        </label>
-        <label>B (Bottom Width):
-          <input id="B" type="number" value="500" min="50" max="2440" onclick="this.select()">
-          <div class="range">Min 50 mm — Max 2440 mm</div>
-        </label>
-        <label>C (Top Width):
-          <input id="C" type="number" value="200" min="20" onclick="this.select()">
-          <div class="range">Min 20 mm — Max <span id="CmaxLabel">499</span> mm</div>
-        </label>
-        <label id="Dlabel">D (Offset):
-          <input id="D" type="number" value="0" min="0" onclick="this.select()">
-          <div class="range">0 mm — Max <span id="DmaxLabel">0</span> mm</div>
-        </label>
+  <div class="main-layout">
+    <div class="left-col">
+      <div class="file-controls panel">
+        <h3>Export Part</h3>
+        <div style="display: flex; align-items: flex-end; gap: 15px; flex-wrap: wrap;">
+          <label style="flex: 1; min-width: 150px;">File Name: <input id="fileName" type="text" value="trapezium" style="width: 100%;"></label>
+          <button onclick="downloadPNG()">Download PNG</button>
+          <button onclick="downloadDXF()">Download DXF</button>
+        </div>
       </div>
+      <canvas id="canvas"></canvas>
     </div>
 
-    <div class="panel">
-      <h3>Corner Radii</h3>
-      <p style="font-size: 11px; color: #b5bac1; margin-top: -5px; margin-bottom: 12px;">Hover to highlight on diagram. Min 50mm if banding is applied to adjacent edges.</p>
-      <div class="corner-grid">
-          <div class="corner-input-wrap" data-corner="0"><label>Corner 1 (Top L)</label><input type="number" id="rad0" value="0" min="0"></div>
-          <div class="corner-input-wrap" data-corner="1"><label>Corner 2 (Top R)</label><input type="number" id="rad1" value="0" min="0"></div>
-          <div class="corner-input-wrap" data-corner="2"><label>Corner 3 (Btm R)</label><input type="number" id="rad2" value="0" min="0"></div>
-          <div class="corner-input-wrap" data-corner="3"><label>Corner 4 (Btm L)</label><input type="number" id="rad3" value="0" min="0"></div>
+    <div class="right-col">
+      <div class="controls panel">
+        <h3>Dimensions</h3>
+        <div style="display: flex; flex-wrap: wrap; gap: 15px 25px;">
+          <label style="width: 100%;">Type:
+            <select id="type"><option value="regular">Regular</option><option value="right">Right</option><option value="irregular">Irregular</option></select>
+          </label>
+          <label>A (Height):<input id="A" type="number" value="500" min="100" max="2440" onclick="this.select()"><div class="range">Min 100 mm — Max 2440 mm</div></label>
+          <label>B (Bottom Width):<input id="B" type="number" value="500" min="50" max="2440" onclick="this.select()"><div class="range">Min 50 mm — Max 2440 mm</div></label>
+          <label>C (Top Width):<input id="C" type="number" value="200" min="20" onclick="this.select()"><div class="range">Min 20 mm — Max <span id="CmaxLabel">499</span> mm</div></label>
+          <label id="Dlabel">D (Offset):<input id="D" type="number" value="0" min="0" onclick="this.select()"><div class="range">0 mm — Max <span id="DmaxLabel">0</span> mm</div></label>
+        </div>
       </div>
-    </div>
-  </div>
 
-  <div class="panel-row">
-    <div class="edge-controls panel">
-      <h3>Edge Banding</h3>
-      <div id="dynamic-banding-controls" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center;"></div>
-    </div>
-    <div class="file-controls panel">
-      <h3>Export Part</h3>
-      <div style="display: flex; align-items: flex-end; gap: 15px; flex-wrap: wrap;">
-        <label style="flex: 1; min-width: 150px;">File Name: <input id="fileName" type="text" value="trapezium" style="width: 100%;"></label>
-        <button onclick="downloadPNG()">Download PNG</button>
-        <button onclick="downloadDXF()">Download DXF</button>
+      <div class="panel">
+        <h3>Corner Radii</h3>
+        <p style="font-size: 11px; color: #b5bac1; margin-top: -5px; margin-bottom: 12px;">Hover to highlight on diagram. Min 50mm if banding flows through.</p>
+        <div class="corner-grid">
+            <div class="corner-input-wrap" data-corner="0"><label>Corner 1 (Top L)</label><input type="number" id="rad0" value="0" min="0"></div>
+            <div class="corner-input-wrap" data-corner="1"><label>Corner 2 (Top R)</label><input type="number" id="rad1" value="0" min="0"></div>
+            <div class="corner-input-wrap" data-corner="2"><label>Corner 3 (Btm R)</label><input type="number" id="rad2" value="0" min="0"></div>
+            <div class="corner-input-wrap" data-corner="3"><label>Corner 4 (Btm L)</label><input type="number" id="rad3" value="0" min="0"></div>
+        </div>
+      </div>
+
+      <div class="edge-controls panel">
+        <h3>Edge Banding</h3>
+        <div id="dynamic-banding-controls" style="display: flex; flex-direction: column; gap: 10px;"></div>
       </div>
     </div>
   </div>
-  <canvas id="canvas" width="900" height="600"></canvas>
 </div>
-<div id="versionLabel">v3.2.2</div>
+<div id="versionLabel">v4.0.0</div>
 
 <script src="script.js"></script>
 </body>
