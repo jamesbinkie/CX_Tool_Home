@@ -21,7 +21,6 @@ window.onload = () => {
         wrap.addEventListener('mouseleave', () => { highlightedCorner = -1; drawTriangle(); });
     });
     
-    // Replaced standard window.resize with ResizeObserver
     new ResizeObserver(() => {
         requestAnimationFrame(() => drawTriangle());
     }).observe(document.getElementById("canvas"));
@@ -57,15 +56,42 @@ function validateAndClamp() {
 function getRadii() { return [parseFloat(document.getElementById("rad0").value) || 0, parseFloat(document.getElementById("rad1").value) || 0, parseFloat(document.getElementById("rad2").value) || 0]; }
 
 function validateRadii() {
-    let conflict = false; const radii = getRadii();
-    for (let i = 0; i < 3; i++) {
-        let rEl = document.getElementById(`rad${i}`), val = parseFloat(rEl.value) || 0;
+    let conflict = false; 
+    const radii = getRadii();
+    const pts = getPoints();
+    const n = pts.length;
+    let changed = false;
+    
+    for(let i=0; i<n; i++) {
+        let p1 = pts[i], p2 = pts[(i+1)%n];
+        let len = Math.hypot(p2[0]-p1[0], p2[1]-p1[1]);
+        let r1 = radii[i], r2 = radii[(i+1)%n];
+        if (r1 + r2 > len) {
+            let factor = len / (r1 + r2 + 0.1);
+            radii[i] *= factor;
+            radii[(i+1)%n] *= factor;
+            changed = true;
+        }
+    }
+    if (changed) {
+        for(let i=0; i<n; i++) document.getElementById(`rad${i}`).value = Math.floor(radii[i]);
+    }
+    
+    const finalRadii = getRadii();
+    for (let i = 0; i < n; i++) {
+        let val = finalRadii[i];
         if (val === 0) continue;
         let isBanded = false;
-        currentSections.forEach((sec, sIdx) => { const cb = document.getElementById(`bandSec${sIdx}`); if (cb && cb.checked && (sec.includes(i) || sec.includes((i + 2) % 3))) isBanded = true; });
-        if (isBanded && val > 0 && val < 50) { rEl.value = 50; conflict = true; }
+        currentSections.forEach((sec, sIdx) => { 
+            const cb = document.getElementById(`bandSec${sIdx}`); 
+            if (cb && cb.checked && (sec.includes(i) || sec.includes((i + n - 1) % n))) isBanded = true; 
+        });
+        if (isBanded && val > 0 && val < 50) { 
+            document.getElementById(`rad${i}`).value = 50; 
+            conflict = true; 
+        }
     }
-    document.getElementById("radiusWarning").style.display = conflict ? "block" : "none";
+    document.getElementById("radiusWarning").style.display = (conflict || changed) ? "block" : "none";
 }
 
 function refreshHintsAndWarnings() {
@@ -112,13 +138,19 @@ function generatePathData(pts, offset, radii, scale, offX, offY) {
     const corners = [];
     for (let i = 0; i < n; i++) {
         const ePrev = edges[(i + n - 1) % n], eNext = edges[i], C_off = intersectLines(ePrev.offL, eNext.offL), r = radii[i] * scale, R_off = r > 0 ? r + offset : 0;
-        let d = 0;
+        let d = 0, arcMid = { x: C_off.x, y: C_off.y }, arcStart = C_off, arcEnd = C_off;
         if (R_off > 0) {
             let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy, alpha = Math.atan2(cross, dot);
             d = R_off * Math.abs(Math.tan(alpha / 2));
+            arcStart = { x: C_off.x - ePrev.vx * d, y: C_off.y - ePrev.vy * d };
+            arcEnd = { x: C_off.x + eNext.vx * d, y: C_off.y + eNext.vy * d };
+            let sign = Math.sign(cross) || 1;
+            let nx = -ePrev.vy * sign, ny = ePrev.vx * sign;
+            let cx = arcStart.x + nx * R_off, cy = arcStart.y + ny * R_off;
+            let vX = C_off.x - cx, vY = C_off.y - cy, vLen = Math.hypot(vX, vY) || 1;
+            arcMid = { x: cx + (vX / vLen) * R_off, y: cy + (vY / vLen) * R_off };
         }
-        let arcStart = { x: C_off.x - ePrev.vx * d, y: C_off.y - ePrev.vy * d }, arcEnd = { x: C_off.x + eNext.vx * d, y: C_off.y + eNext.vy * d };
-        corners.push({ C_off, R_off, r_orig: radii[i], arcStart, arcEnd });
+        corners.push({ C_off, R_off, r_orig: radii[i], arcStart, arcEnd, arcMid });
     }
     return { corners, edges };
 }
@@ -140,7 +172,6 @@ function updateBandingUI(radii) {
     }
     currentSections = sections;
     
-    // Added grid-column: 1 / -1
     let html = `<label style="grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; font-weight: bold; margin-bottom: 5px;"><input type="checkbox" id="bandAll" checked> Band All</label>`;
     
     sections.forEach((sec, idx) => {
@@ -202,7 +233,7 @@ function drawTriangle(targetCanvas = null) {
     }
     drawDimensions(ctx, pts, scale, offX, offY);
     if (highlightedCorner !== -1 && !targetCanvas) {
-        const cp = crns[highlightedCorner]; ctx.beginPath(); ctx.arc(cp.C_off.x, cp.C_off.y, 20, 0, Math.PI * 2); ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
+        const cp = crns[highlightedCorner]; ctx.beginPath(); ctx.arc(cp.arcMid.x, cp.arcMid.y, 20, 0, Math.PI * 2); ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
     }
 }
 
@@ -225,9 +256,12 @@ function drawDimensions(ctx, pts, scale, offsetX, offsetY) {
 }
 
 function getDXFPolyline(layer, vertices, isClosed) {
-    let dxf = ["  0", "POLYLINE", "  8", layer, " 66", "1", " 70", isClosed ? "1" : "0"];
-    vertices.forEach(p => { dxf.push("  0", "VERTEX", "  8", layer, " 10", p.x.toFixed(4), " 20", p.y.toFixed(4), " 42", (p.bulge || 0).toFixed(8)); });
-    dxf.push("  0", "SEQEND", "  8", layer); return dxf;
+    let dxf = ["  0", "LWPOLYLINE", "  8", layer, " 90", vertices.length.toString(), " 70", isClosed ? "1" : "0"];
+    vertices.forEach(p => { 
+        dxf.push(" 10", p.x.toFixed(4), " 20", p.y.toFixed(4)); 
+        if (Math.abs(p.bulge || 0) > 0.000001) dxf.push(" 42", (p.bulge).toFixed(8)); 
+    });
+    return dxf;
 }
 
 function computeDXFVertices(pts, radii, offset = 0) {
@@ -267,7 +301,7 @@ function downloadDXF() {
     const baseCorners = computeDXFVertices(pts, radii, 0), bandCorners = computeDXFVertices(pts, radii, 12);
     let shapePts = [];
     baseCorners.forEach(c => { shapePts.push(c.start); if (c.start.x !== c.end.x || c.start.y !== c.end.y) shapePts.push(c.end); });
-    let dxf = ["  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC", "  0", "SECTION", "  2", "TABLES", "  0", "TABLE", "  2", "LAYER", " 70", "2", "  0", "LAYER", "  2", "Shape", " 70", "0", " 62", "7", "  0", "LAYER", "  2", "Edge_Banding", " 70", "0", " 62", "1", "  0", "ENDTAB", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES"];
+    let dxf = ["  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1015", "  0", "ENDSEC", "  0", "SECTION", "  2", "TABLES", "  0", "TABLE", "  2", "LAYER", " 70", "2", "  0", "LAYER", "  2", "Shape", " 70", "0", " 62", "7", "  0", "LAYER", "  2", "Edge_Banding", " 70", "0", " 62", "1", "  0", "ENDTAB", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES"];
     dxf = dxf.concat(getDXFPolyline("Shape", shapePts, true));
     currentSections.forEach((sec, sIdx) => {
         const cb = document.getElementById(`bandSec${sIdx}`);
