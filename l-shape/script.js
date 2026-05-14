@@ -15,7 +15,7 @@ window.onload = () => {
         const el = document.getElementById(id);
         if (el) {
             if (el.tagName === "INPUT" && el.type === "number") {
-                el.addEventListener("input", () => { drawLShape(); });
+                el.addEventListener("input", () => drawLShape());
                 el.addEventListener("blur", () => { validateAndClamp(); updateUI(); });
             } else {
                 el.addEventListener("change", () => { validateAndClamp(); updateUI(); });
@@ -28,9 +28,8 @@ window.onload = () => {
         wrap.addEventListener('mouseleave', () => { highlightedCorner = -1; drawLShape(); });
     });
 
-    new ResizeObserver(() => {
-        requestAnimationFrame(() => drawLShape());
-    }).observe(document.getElementById("canvas"));
+    new ResizeObserver(() => requestAnimationFrame(drawLShape))
+        .observe(document.getElementById("canvas"));
 
     updateUI();
 };
@@ -281,7 +280,6 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
 
         let arcStart = { x: rc.C_off.x - ePrev.vx * rc.d, y: rc.C_off.y - ePrev.vy * rc.d };
         let arcEnd = { x: rc.C_off.x + eNext.vx * rc.d, y: rc.C_off.y + eNext.vy * rc.d };
-        let arcMid = { x: rc.C_off.x, y: rc.C_off.y };
         let arcCenter = { x: rc.C_off.x, y: rc.C_off.y };
 
         if (rc.R_off > 0) {
@@ -293,23 +291,6 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
             } else {
                 arcCenter = { x: arcStart.x - inNx * rc.R_off, y: arcStart.y - inNy * rc.R_off };
             }
-
-            let aStart = Math.atan2(arcStart.y - arcCenter.y, arcStart.x - arcCenter.x) * 180 / Math.PI;
-            let aEnd = Math.atan2(arcEnd.y - arcCenter.y, arcEnd.x - arcCenter.x) * 180 / Math.PI;
-            if (aStart < 0) aStart += 360;
-            if (aEnd < 0) aEnd += 360;
-
-            let dxfStart = aStart;
-            let dxfEnd = aEnd;
-
-            let aMidCCW = (dxfStart < dxfEnd)
-                ? (dxfStart + dxfEnd) / 2
-                : (dxfStart + dxfEnd + 360) / 2;
-
-            arcMid = {
-                x: arcCenter.x + rc.R_off * Math.cos(aMidCCW * Math.PI / 180),
-                y: arcCenter.y + rc.R_off * Math.sin(aMidCCW * Math.PI / 180)
-            };
         }
 
         corners.push({
@@ -317,7 +298,6 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
             R_off: rc.R_off,
             arcStart,
             arcEnd,
-            arcMid,
             arcCenter,
             isConvex: rc.isConvex
         });
@@ -326,9 +306,9 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     return corners;
 }
 
-// ------------------------------
-// FIXED POLYLINE BUILDER
-// ------------------------------
+//
+//  FIXED POLYLINE BUILDER
+//
 function buildShapePolyline(corners) {
     const n = corners.length;
     let verts = [];
@@ -384,31 +364,19 @@ function buildShapePolyline(corners) {
     return verts;
 }
 
-// ------------------------------
-// DXF EXPORT
-// ------------------------------
+//
+//  DXF EXPORT
+//
 function downloadDXF() {
     const pts = getPoints();
     const radii = getRadii();
-    const n = pts.length;
 
     const shapeCorners = generatePathData(pts, 0, radii, 1, 0, 0);
-    const bandCorners  = generatePathData(pts, 12, radii, 1, 0, 0);
-
     const polyVerts = buildShapePolyline(shapeCorners);
 
     let dxf = [
         "  0","SECTION","  2","HEADER",
         "  9","$ACADVER","  1","AC1009",
-        "  0","ENDSEC",
-        "  0","SECTION","  2","TABLES",
-        "  0","TABLE","  2","LTYPE"," 70","1",
-        "  0","LTYPE","  2","CONTINUOUS"," 70","0","  3","Solid line"," 72","65"," 73","0"," 40","0.0",
-        "  0","ENDTAB",
-        "  0","TABLE","  2","LAYER"," 70","2",
-        "  0","LAYER","  2","Shape"," 70","0"," 62","7","  6","CONTINUOUS",
-        "  0","LAYER","  2","Edge_Banding"," 70","0"," 62","1","  6","CONTINUOUS",
-        "  0","ENDTAB",
         "  0","ENDSEC",
         "  0","SECTION","  2","ENTITIES"
     ];
