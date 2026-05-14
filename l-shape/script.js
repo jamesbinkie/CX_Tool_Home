@@ -331,7 +331,8 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
             arcCenter,
             dxfStart,
             dxfEnd,
-            drawCCW
+            drawCCW,
+            isConvex: rc.isConvex
         });
     }
 
@@ -381,7 +382,6 @@ function getDXFPolyline(corners, layer, isClosed) {
     const n = corners.length;
     const exact = corners.map(c => getExactPoints(c));
 
-    // Build ordered vertex list: line segments + arc segments via bulge
     let vertices = [];
 
     for (let i = 0; i < n; i++) {
@@ -389,21 +389,26 @@ function getDXFPolyline(corners, layer, isClosed) {
         const ex = exact[i];
 
         if (c.R_off > 0.001) {
-            const bulge = getBulge(c);
+            let enter = ex.enter;
+            let exit = ex.exit;
+            let bulge = getBulge(c);
 
-            // Arc from enter -> exit
-            // 1) enter vertex with bulge
-            if (vertices.length === 0 || Math.hypot(vertices[vertices.length - 1].x - ex.enter.x, vertices[vertices.length - 1].y - ex.enter.y) > 1e-6) {
-                vertices.push({ x: ex.enter.x, y: ex.enter.y, bulge });
+            // concave corner: swap enter/exit and flip bulge so it still bulges outward
+            if (!c.isConvex) {
+                const tmp = enter;
+                enter = exit;
+                exit = tmp;
+                bulge = -bulge;
+            }
+
+            if (vertices.length === 0 || Math.hypot(vertices[vertices.length - 1].x - enter.x, vertices[vertices.length - 1].y - enter.y) > 1e-6) {
+                vertices.push({ x: enter.x, y: enter.y, bulge });
             } else {
-                // If same point as previous, just set bulge on previous
                 vertices[vertices.length - 1].bulge = bulge;
             }
 
-            // 2) exit vertex (end of arc, start of next line)
-            vertices.push({ x: ex.exit.x, y: ex.exit.y, bulge: 0 });
+            vertices.push({ x: exit.x, y: exit.y, bulge: 0 });
         } else {
-            // Sharp corner: single vertex at corner point
             const p = ex.enter;
             if (vertices.length === 0 || Math.hypot(vertices[vertices.length - 1].x - p.x, vertices[vertices.length - 1].y - p.y) > 1e-6) {
                 vertices.push({ x: p.x, y: p.y, bulge: 0 });
@@ -411,7 +416,6 @@ function getDXFPolyline(corners, layer, isClosed) {
         }
     }
 
-    // POLYLINE header
     dxf.push(
         "  0", "POLYLINE",
         "  8", layer,
@@ -422,7 +426,6 @@ function getDXFPolyline(corners, layer, isClosed) {
         " 30", "0.0"
     );
 
-    // VERTEX entities
     vertices.forEach(v => {
         dxf.push(
             "  0", "VERTEX",
@@ -436,14 +439,11 @@ function getDXFPolyline(corners, layer, isClosed) {
         }
     });
 
-    // SEQEND
     dxf.push("  0", "SEQEND", "  8", layer);
 
     return dxf;
 }
 
-// For partial banding sections (open), we can still use simple LINE/ARC entities.
-// They don't need to be a single contour for cutting.
 function getDXFEntitiesOpenBand(corners, layer, sec) {
     let dxf = [];
     const n = corners.length;
@@ -634,7 +634,7 @@ function drawLShape(targetCanvas = null) {
                         let c = bCrns[(edgeIdx + 1) % n];
                         ctx.lineTo(c.arcStart.x, c.arcStart.y);
                         if (idx < sec.length - 1) {
-                            if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
+                            if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.R_off);
                             else ctx.lineTo(c.C_off.x, c.C_off.y);
                         }
                     });
@@ -771,20 +771,16 @@ function downloadDXF() {
         "  2", "ENTITIES"
     ];
 
-    // Main shape as a single closed POLYLINE with bulge arcs
     const baseCorners = generatePathData(pts, 0, radii);
     dxf = dxf.concat(getDXFPolyline(baseCorners, "Shape", true));
 
-    // Edge banding offset
     const bandCorners = generatePathData(pts, 12, radii);
     currentSections.forEach((sec, sIdx) => {
         const cb = document.getElementById(`bandSec${sIdx}`);
         if (cb && cb.checked) {
             if (sec.length === n) {
-                // Full loop banding as closed polyline
                 dxf = dxf.concat(getDXFPolyline(bandCorners, "Edge_Banding", true));
             } else {
-                // Partial banding as open LINE/ARC entities
                 dxf = dxf.concat(getDXFEntitiesOpenBand(bandCorners, "Edge_Banding", sec));
             }
         }
