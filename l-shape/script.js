@@ -339,23 +339,7 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     return corners;
 }
 
-// --- DXF helpers: exact arc endpoints and entities (LINE + ARC) ---
-
-function getExactPoints(c) {
-    // For sharp corners, just use the corner point
-    if (c.R_off <= 0.001) {
-        return { enter: c.C_off, exit: c.C_off };
-    }
-
-    // Use the exact tangent points we already computed for the canvas path
-    // arcStart = point where the incoming line meets the arc
-    // arcEnd   = point where the arc meets the outgoing line
-    return {
-        enter: { x: c.arcStart.x, y: c.arcStart.y },
-        exit:  { x: c.arcEnd.x,   y: c.arcEnd.y }
-    };
-}
-
+// --- DXF: continuous closed path + minor arcs only ---
 
 function getDXFEntities(corners, layer, isClosed, sec = null) {
     let dxf = [];
@@ -376,16 +360,25 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
     const pushArc = (c) => {
         if (c.R_off <= 0.001) return;
 
-        // Ensure angles correspond to arcStart (enter) and arcEnd (exit)
-        // Recompute from geometry to be absolutely consistent
         const cx = c.arcCenter.x;
         const cy = c.arcCenter.y;
 
-        const aStart = Math.atan2(c.arcStart.y - cy, c.arcStart.x - cx) * 180 / Math.PI;
-        const aEnd   = Math.atan2(c.arcEnd.y   - cy, c.arcEnd.x   - cx) * 180 / Math.PI;
+        let aStart = Math.atan2(c.arcStart.y - cy, c.arcStart.x - cx) * 180 / Math.PI;
+        let aEnd   = Math.atan2(c.arcEnd.y   - cy, c.arcEnd.x   - cx) * 180 / Math.PI;
 
-        let s = aStart < 0 ? aStart + 360 : aStart;
-        let e = aEnd   < 0 ? aEnd   + 360 : aEnd;
+        if (aStart < 0) aStart += 360;
+        if (aEnd   < 0) aEnd   += 360;
+
+        // Force minor arc (short way round) so internal fillet is 6→9, not the big sweep
+        let s = aStart;
+        let e = aEnd;
+        let sweep = (e - s + 360) % 360;
+        if (sweep > 180) {
+            // swap to take the other direction
+            const tmp = s;
+            s = e;
+            e = tmp;
+        }
 
         dxf.push(
             "  0", "ARC",
@@ -399,51 +392,47 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
     };
 
     if (isClosed) {
+        // Closed: ARC(c0) then [LINE+ARC] around, using arcStart/arcEnd directly
+        if (n > 0) pushArc(corners[0]);
+
         for (let i = 0; i < n; i++) {
-            let c1 = corners[i];
-            let c2 = corners[(i + 1) % n];
+            const c  = corners[i];
+            const nx = corners[(i + 1) % n];
 
-            const p1 = getExactPoints(c1);
-            const p2 = getExactPoints(c2);
+            const p1 = (c.R_off  > 0) ? c.arcEnd   : c.C_off;
+            const p2 = (nx.R_off > 0) ? nx.arcStart: nx.C_off;
 
-            // Arc at corner i
-            pushArc(c1);
-            // Straight between this arc and the next arc
-            pushLine(p1.exit, p2.enter);
+            pushLine(p1, p2);
+
+            if (i + 1 < n) {
+                pushArc(nx);
+            }
         }
     } else {
-        // Open banding section
+        // Open banding section: still use arcStart/arcEnd, but only along selected edges
         for (let i = 0; i < sec.length; i++) {
             let edgeIdx = sec[i];
-            let c1 = corners[edgeIdx];
-            let c2 = corners[(edgeIdx + 1) % n];
+            let c  = corners[edgeIdx];
+            let nx = corners[(edgeIdx + 1) % n];
 
-            const p1 = getExactPoints(c1);
-            const p2 = getExactPoints(c2);
+            const p1 = (c.R_off  > 0) ? c.arcEnd   : c.C_off;
+            const p2 = (nx.R_off > 0) ? nx.arcStart: nx.C_off;
 
             if (i === 0) {
-                // First straight segment
-                pushLine(p1.exit, p2.enter);
+                pushLine(p1, p2);
+            } else {
+                pushLine(p1, p2);
             }
 
             if (i < sec.length - 1) {
-                // Arc at the next corner along this banded run
                 let cornerIdx = (edgeIdx + 1) % n;
                 pushArc(corners[cornerIdx]);
-
-                let nextEdgeIdx = sec[i + 1];
-                let nextCornerIdx = (nextEdgeIdx + 1) % n;
-                const pMid = getExactPoints(corners[cornerIdx]);
-                const pNext = getExactPoints(corners[nextCornerIdx]);
-
-                pushLine(pMid.exit, pNext.enter);
             }
         }
     }
 
     return dxf;
 }
-
 
 function updateBandingUI(radii) {
     const n = radii.length;
@@ -583,7 +572,7 @@ function drawLShape(targetCanvas = null) {
                         let c = bCrns[(edgeIdx + 1) % n];
                         ctx.lineTo(c.arcStart.x, c.arcStart.y);
                         if (idx < sec.length - 1) {
-                            if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
+                            if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.R_off);
                             else ctx.lineTo(c.C_off.x, c.C_off.y);
                         }
                     });
