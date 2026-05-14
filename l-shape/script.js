@@ -101,17 +101,8 @@ function validateRadii() {
             let d1 = r1 * alphas[i], d2 = r2 * alphas[(i + 1) % n];
             let len = edges[i].len;
             if (d1 + d2 > len + 0.001) {
-                let excess = (d1 + d2) - len;
-                let flex1 = d1 - (minR1 * alphas[i]), flex2 = d2 - (minR2 * alphas[(i + 1) % n]);
-                if (flex1 < 0) flex1 = 0; if (flex2 < 0) flex2 = 0;
-                
-                if (flex1 + flex2 > 0) {
-                    let f1 = flex1 / (flex1 + flex2), f2 = flex2 / (flex1 + flex2);
-                    d1 -= excess * f1; d2 -= excess * f2;
-                } else {
-                    d1 = minR1 * alphas[i]; d2 = minR2 * alphas[(i + 1) % n];
-                }
-                radii[i] = d1 / (alphas[i] || 1); radii[(i + 1) % n] = d2 / (alphas[(i + 1) % n] || 1);
+                let factor = len / (d1 + d2 + 0.0001);
+                radii[i] *= factor; radii[(i + 1) % n] *= factor;
                 clamped = true; changed = true;
             }
         }
@@ -201,40 +192,79 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         let dxfStart = 0, dxfEnd = 0;
 
         if (rc.R_off > 0) {
-            let vX = eNext.vx - ePrev.vx, vY = eNext.vy - ePrev.vy;
-            let vLen = Math.hypot(vX, vY);
-            if (vLen > 0.0001) {
-                vX /= vLen; vY /= vLen;
-                let distToCenter = Math.hypot(rc.d, rc.R_off);
-                let cx1 = rc.C_off.x + vX * distToCenter, cy1 = rc.C_off.y + vY * distToCenter;
-                let cx2 = rc.C_off.x - vX * distToCenter, cy2 = rc.C_off.y - vY * distToCenter;
-                let d1 = Math.abs(Math.hypot(cx1 - arcStart.x, cy1 - arcStart.y) - rc.R_off);
-                let d2 = Math.abs(Math.hypot(cx2 - arcStart.x, cy2 - arcStart.y) - rc.R_off);
-                arcCenter = (d1 < d2) ? { x: cx1, y: cy1 } : { x: cx2, y: cy2 };
-            }
+            let turnSign = Math.sign(rc.cross) || 1;
+            let nx = -ePrev.vy * turnSign, ny = ePrev.vx * turnSign;
+            arcCenter = { x: arcStart.x + nx * rc.R_off, y: arcStart.y + ny * rc.R_off };
 
             let aStart = Math.atan2(arcStart.y - arcCenter.y, arcStart.x - arcCenter.x) * 180 / Math.PI;
             let aEnd   = Math.atan2(arcEnd.y - arcCenter.y, arcEnd.x - arcCenter.x) * 180 / Math.PI;
             if (aStart < 0) aStart += 360;
             if (aEnd < 0) aEnd += 360;
 
-            let aMidCCW = (aStart < aEnd) ? (aStart + aEnd) / 2 : (aStart + aEnd + 360) / 2;
-            let midCCWx = arcCenter.x + rc.R_off * Math.cos(aMidCCW * Math.PI / 180);
-            let midCCWy = arcCenter.y + rc.R_off * Math.sin(aMidCCW * Math.PI / 180);
-            let aMidCW = aMidCCW + 180;
-            let midCWx = arcCenter.x + rc.R_off * Math.cos(aMidCW * Math.PI / 180);
-            let midCWy = arcCenter.y + rc.R_off * Math.sin(aMidCW * Math.PI / 180);
+            if (turnSign > 0) {
+                dxfStart = aStart; dxfEnd = aEnd;
+            } else {
+                dxfStart = aEnd; dxfEnd = aStart;
+            }
 
-            let distCCW = Math.hypot(midCCWx - rc.C_off.x, midCCWy - rc.C_off.y);
-            let distCW = Math.hypot(midCWx - rc.C_off.x, midCWy - rc.C_off.y);
-
-            if (distCCW < distCW) { dxfStart = aStart; dxfEnd = aEnd; } 
-            else { dxfStart = aEnd; dxfEnd = aStart; }
-            arcMid = (distCCW < distCW) ? {x: midCCWx, y: midCCWy} : {x: midCWx, y: midCWy};
+            let aMidCCW = (dxfStart < dxfEnd) ? (dxfStart + dxfEnd) / 2 : (dxfStart + dxfEnd + 360) / 2;
+            arcMid = {
+                x: arcCenter.x + rc.R_off * Math.cos(aMidCCW * Math.PI / 180),
+                y: arcCenter.y + rc.R_off * Math.sin(aMidCCW * Math.PI / 180)
+            };
         }
-        corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, arcCenter, dxfStart, dxfEnd });
+        corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, arcCenter, dxfStart, dxfEnd, cross: rc.cross });
     }
     return corners;
+}
+
+function getDXFEntities(corners, layer, isClosed, sec = null) {
+    let dxf = [];
+    const n = corners.length;
+
+    function getExactPoints(c) {
+        if (c.R_off <= 0.001) return { enter: c.C_off, exit: c.C_off };
+        
+        let cx = parseFloat(c.arcCenter.x.toFixed(8));
+        let cy = parseFloat(c.arcCenter.y.toFixed(8));
+        let r  = parseFloat(c.R_off.toFixed(8));
+        let aStart = parseFloat(c.dxfStart.toFixed(8)) * Math.PI / 180;
+        let aEnd = parseFloat(c.dxfEnd.toFixed(8)) * Math.PI / 180;
+
+        let ptStart = { x: cx + r * Math.cos(aStart), y: cy + r * Math.sin(aStart) };
+        let ptEnd = { x: cx + r * Math.cos(aEnd), y: cy + r * Math.sin(aEnd) };
+
+        if (c.cross > 0) {
+            return { enter: ptStart, exit: ptEnd };
+        } else {
+            return { enter: ptEnd, exit: ptStart };
+        }
+    }
+
+    const pushLine = (p1, p2) => {
+        if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.001) return;
+        dxf.push("  0", "LINE", "  8", layer, " 10", p1.x.toFixed(8), " 20", p1.y.toFixed(8), " 11", p2.x.toFixed(8), " 21", p2.y.toFixed(8));
+    };
+    
+    const pushArc = (c) => {
+        if (c.R_off <= 0.001) return;
+        dxf.push("  0", "ARC", "  8", layer, " 10", c.arcCenter.x.toFixed(8), " 20", c.arcCenter.y.toFixed(8), " 40", c.R_off.toFixed(8), " 50", c.dxfStart.toFixed(8), " 51", c.dxfEnd.toFixed(8));
+    };
+
+    if (isClosed) {
+        for (let i = 0; i < n; i++) {
+            let c1 = corners[i], c2 = corners[(i + 1) % n];
+            pushArc(c1);
+            pushLine(getExactPoints(c1).exit, getExactPoints(c2).enter);
+        }
+    } else {
+        for (let i = 0; i < sec.length; i++) {
+            let edgeIdx = sec[i], c1 = corners[edgeIdx], c2 = corners[(edgeIdx + 1) % n];
+            pushLine(getExactPoints(c1).exit, getExactPoints(c2).enter);
+            if (i < sec.length - 1) pushArc(c2);
+        }
+    }
+    return dxf;
 }
 
 function updateBandingUI(radii) {
@@ -282,7 +312,7 @@ function drawLShape(targetCanvas = null) {
     ctx.beginPath(); ctx.moveTo(crns[0].arcStart.x, crns[0].arcStart.y);
     for (let i = 0; i < n; i++) {
         let c = crns[i];
-        if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
+        if (c.R_off > 0) ctx.arcTo(c.arcCenter.x, c.arcCenter.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
         ctx.lineTo(crns[(i + 1) % n].arcStart.x, crns[(i + 1) % n].arcStart.y);
     }
     ctx.closePath(); ctx.lineWidth = Math.max(2, 3 * (canvas.width / 1200)); ctx.strokeStyle = "#000"; ctx.stroke();
@@ -298,7 +328,7 @@ function drawLShape(targetCanvas = null) {
                     ctx.moveTo(bCrns[0].arcStart.x, bCrns[0].arcStart.y);
                     for (let i = 0; i < n; i++) {
                         let c = bCrns[i];
-                        if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
+                        if (c.R_off > 0) ctx.arcTo(c.arcCenter.x, c.arcCenter.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
                         ctx.lineTo(bCrns[(i + 1) % n].arcStart.x, bCrns[(i + 1) % n].arcStart.y);
                     }
                     ctx.closePath();
@@ -307,7 +337,7 @@ function drawLShape(targetCanvas = null) {
                     sec.forEach((edgeIdx, idx) => {
                         let c = bCrns[(edgeIdx + 1) % n];
                         ctx.lineTo(c.arcStart.x, c.arcStart.y);
-                        if (idx < sec.length - 1) { if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y); }
+                        if (idx < sec.length - 1) { if (c.R_off > 0) ctx.arcTo(c.arcCenter.x, c.arcCenter.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y); }
                     });
                 }
                 ctx.stroke();
@@ -343,70 +373,6 @@ function drawLDimensions(ctx, scale, offX, offY, th) {
     drawDim(dX, offY + th*scale, dX, offY + th*scale - D*scale, `D: ${D}mm`);
 }
 
-function getDXFEntities(corners, layer, isClosed, sec = null) {
-    let dxf = [];
-    const n = corners.length;
-    
-    let area = 0;
-    for(let i=0; i<n; i++) {
-        let p1 = corners[i].C_off, p2 = corners[(i+1)%n].C_off;
-        area += p1.x * p2.y - p2.x * p1.y;
-    }
-    const isCW = area < 0;
-
-    function getCornerEndpoints(c) {
-        if (c.R_off <= 0.001) return { start: c.C_off, end: c.C_off };
-        let cx = parseFloat(c.arcCenter.x.toFixed(8)), cy = parseFloat(c.arcCenter.y.toFixed(8));
-        let r  = parseFloat(c.R_off.toFixed(8));
-        let a1 = parseFloat(c.dxfStart.toFixed(8)) * Math.PI / 180;
-        let a2 = parseFloat(c.dxfEnd.toFixed(8)) * Math.PI / 180;
-        
-        let p1 = { x: cx + r * Math.cos(a1), y: cy + r * Math.sin(a1) };
-        let p2 = { x: cx + r * Math.cos(a2), y: cy + r * Math.sin(a2) };
-        return { start: p1, end: p2 };
-    }
-
-    const pushLine = (p1, p2) => {
-        if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.001) return;
-        dxf.push("  0", "LINE", "  8", layer, " 10", p1.x.toFixed(8), " 20", p1.y.toFixed(8), " 11", p2.x.toFixed(8), " 21", p2.y.toFixed(8));
-    };
-    const pushArc = (c) => {
-        if (c.R_off <= 0.001) return;
-        dxf.push("  0", "ARC", "  8", layer, " 10", c.arcCenter.x.toFixed(8), " 20", c.arcCenter.y.toFixed(8), " 40", c.R_off.toFixed(8), " 50", c.dxfStart.toFixed(8), " 51", c.dxfEnd.toFixed(8));
-    };
-
-    if (isClosed) {
-        if (isCW) {
-            for (let i = n - 1; i >= 0; i--) {
-                let c1 = corners[i], cPrev = corners[(i + n - 1) % n];
-                pushArc(c1);
-                pushLine(getCornerEndpoints(c1).end, getCornerEndpoints(cPrev).start);
-            }
-        } else {
-            for (let i = 0; i < n; i++) {
-                let c1 = corners[i], c2 = corners[(i + 1) % n];
-                pushArc(c1);
-                pushLine(getCornerEndpoints(c1).end, getCornerEndpoints(c2).start);
-            }
-        }
-    } else {
-        if (isCW) {
-            for (let i = sec.length - 1; i >= 0; i--) {
-                let edgeIdx = sec[i], c1 = corners[(edgeIdx + 1) % n], c2 = corners[edgeIdx];
-                pushLine(getCornerEndpoints(c1).end, getCornerEndpoints(c2).start);
-                if (i > 0) pushArc(c2);
-            }
-        } else {
-            for (let i = 0; i < sec.length; i++) {
-                let edgeIdx = sec[i], c1 = corners[edgeIdx], c2 = corners[(edgeIdx + 1) % n];
-                pushLine(getCornerEndpoints(c1).end, getCornerEndpoints(c2).start);
-                if (i < sec.length - 1) pushArc(c2);
-            }
-        }
-    }
-    return dxf;
-}
-
 function downloadPNG() {
     const tempCanvas = document.createElement("canvas"); 
     tempCanvas.width = 3840; tempCanvas.height = 2160;
@@ -417,7 +383,7 @@ function downloadPNG() {
 }
 
 function downloadDXF() {
-    const rawPts = getPoints(), radii = getRadii(), maxY = Math.max(...rawPts.map(p => p[1])), pts = rawPts.map(p => [p[0], maxY - p[1]]), n = pts.length;
+    const pts = getPoints(), radii = getRadii(), n = pts.length;
     let dxf = [
         "  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC",
         "  0", "SECTION", "  2", "TABLES",
