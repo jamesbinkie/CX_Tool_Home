@@ -235,8 +235,10 @@ function computeDXFVertices(pts, radii) {
 }
 
 function downloadPNG() {
-    const tempCanvas = document.createElement("canvas"); tempCanvas.width = 4096; tempCanvas.height = 2730;
-    const tctx = tempCanvas.getContext("2d"); tctx.fillStyle = "#ffffff"; tctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    const tempCanvas = document.createElement("canvas"); 
+    tempCanvas.width = 3840; tempCanvas.height = 2160;
+    const tctx = tempCanvas.getContext("2d"); 
+    tctx.fillStyle = "#ffffff"; tctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
     drawTriangle(tempCanvas);
     const link = document.createElement("a"); link.download = (document.getElementById("fileName").value || "triangle") + ".png"; link.href = tempCanvas.toDataURL("image/png"); link.click();
 }
