@@ -92,23 +92,11 @@ function validateRadii() {
         let clamped = false;
         for (let i = 0; i < n; i++) {
             let r1 = radii[i], r2 = radii[(i + 1) % n];
-            let minR1 = (r1 > 0 && isCornerBanded(i, n)) ? 50 : 0;
-            let minR2 = (r2 > 0 && isCornerBanded((i + 1) % n, n)) ? 50 : 0;
-            
             let d1 = r1 * alphas[i], d2 = r2 * alphas[(i + 1) % n];
             let len = edges[i].len;
             if (d1 + d2 > len + 0.001) {
-                let excess = (d1 + d2) - len;
-                let flex1 = d1 - (minR1 * alphas[i]), flex2 = d2 - (minR2 * alphas[(i + 1) % n]);
-                if (flex1 < 0) flex1 = 0; if (flex2 < 0) flex2 = 0;
-                
-                if (flex1 + flex2 > 0) {
-                    let f1 = flex1 / (flex1 + flex2), f2 = flex2 / (flex1 + flex2);
-                    d1 -= excess * f1; d2 -= excess * f2;
-                } else {
-                    d1 = minR1 * alphas[i]; d2 = minR2 * alphas[(i + 1) % n];
-                }
-                radii[i] = d1 / (alphas[i] || 1); radii[(i + 1) % n] = d2 / (alphas[(i + 1) % n] || 1);
+                let factor = len / (d1 + d2 + 0.0001);
+                radii[i] *= factor; radii[(i + 1) % n] *= factor;
                 clamped = true; changed = true;
             }
         }
@@ -119,9 +107,13 @@ function validateRadii() {
         for (let i = 0; i < n; i++) document.getElementById(`rad${i}`).value = Math.floor(radii[i]);
     }
     
+    let bandingBroken = false;
+    for (let i = 0; i < n; i++) if (isCornerBanded(i, n) && radii[i] > 0 && radii[i] < 49.9) bandingBroken = true;
+    
     const warnEl = document.getElementById("radiusWarning");
-    warnEl.style.display = (conflict || changed) ? "block" : "none";
-    if (conflict) warnEl.innerHTML = "⚠️ Radii adjusted! Banded corners ideally need 50mm+ radius, but may cause overlapping on small edges.";
+    warnEl.style.display = (conflict || changed || bandingBroken) ? "block" : "none";
+    if (bandingBroken) warnEl.innerHTML = "⚠️ Edge too short! Radii scaled down to prevent overlap, but banded corners require 50mm+ to flex safely.";
+    else if (conflict) warnEl.innerHTML = "⚠️ Radii adjusted! Banded corners must be 0mm (sharp joint) or 50mm+ radius to flex.";
     else if (changed) warnEl.innerHTML = "⚠️ Radii scaled down to prevent corners overlapping.";
 }
 
@@ -161,8 +153,7 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         let R_off = isConvex ? r + offset * scale : r - offset * scale;
         R_off = Math.max(0, R_off); if (r === 0) R_off = 0;
         let d = R_off > 0 ? R_off * Math.abs(Math.tan(alpha / 2)) : 0;
-        let bulge = Math.tan(alpha / 4);
-        rawCorners.push({ C_off, R_off, d, alpha, cross, isConvex, bulge });
+        rawCorners.push({ C_off, R_off, d, alpha, cross, isConvex });
     }
     
     for (let i = 0; i < n; i++) {
@@ -182,46 +173,43 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         let rc = rawCorners[i], ePrev = edges[(i + n - 1) % n], eNext = edges[i];
         let arcStart = { x: rc.C_off.x - ePrev.vx * rc.d, y: rc.C_off.y - ePrev.vy * rc.d };
         let arcEnd = { x: rc.C_off.x + eNext.vx * rc.d, y: rc.C_off.y + eNext.vy * rc.d };
-        let arcMid = { x: rc.C_off.x, y: rc.C_off.y }, bulge = 0;
+        let arcMid = { x: rc.C_off.x, y: rc.C_off.y }, arcCenter = { x: rc.C_off.x, y: rc.C_off.y };
+        let dxfStart = 0, dxfEnd = 0;
 
         if (rc.R_off > 0) {
-            let sign = Math.sign(rc.cross) || 1, nx = -ePrev.vy * sign, ny = ePrev.vx * sign;
-            let cx = arcStart.x + nx * rc.R_off, cy = arcStart.y + ny * rc.R_off;
-            let vX = rc.C_off.x - cx, vY = rc.C_off.y - cy, vLen = Math.hypot(vX, vY) || 1;
-            arcMid = { x: cx + (vX / vLen) * rc.R_off, y: cy + (vY / vLen) * rc.R_off };
-            bulge = (rc.isConvex ? 1 : -1) * CW * rc.bulge;
+            let vX = eNext.vx - ePrev.vx, vY = eNext.vy - ePrev.vy;
+            let vLen = Math.hypot(vX, vY);
+            if (vLen > 0.0001) {
+                vX /= vLen; vY /= vLen;
+                let distToCenter = Math.hypot(rc.d, rc.R_off);
+                let cx1 = rc.C_off.x + vX * distToCenter, cy1 = rc.C_off.y + vY * distToCenter;
+                let cx2 = rc.C_off.x - vX * distToCenter, cy2 = rc.C_off.y - vY * distToCenter;
+                let d1 = Math.abs(Math.hypot(cx1 - arcStart.x, cy1 - arcStart.y) - rc.R_off);
+                let d2 = Math.abs(Math.hypot(cx2 - arcStart.x, cy2 - arcStart.y) - rc.R_off);
+                arcCenter = (d1 < d2) ? { x: cx1, y: cy1 } : { x: cx2, y: cy2 };
+            }
+
+            let aStart = Math.atan2(arcStart.y - arcCenter.y, arcStart.x - arcCenter.x) * 180 / Math.PI;
+            let aEnd   = Math.atan2(arcEnd.y - arcCenter.y, arcEnd.x - arcCenter.x) * 180 / Math.PI;
+            if (aStart < 0) aStart += 360; if (aEnd < 0) aEnd += 360;
+
+            let aMidCCW = (aStart < aEnd) ? (aStart + aEnd) / 2 : (aStart + aEnd + 360) / 2;
+            let midCCWx = arcCenter.x + rc.R_off * Math.cos(aMidCCW * Math.PI / 180);
+            let midCCWy = arcCenter.y + rc.R_off * Math.sin(aMidCCW * Math.PI / 180);
+            let aMidCW = aMidCCW + 180;
+            let midCWx = arcCenter.x + rc.R_off * Math.cos(aMidCW * Math.PI / 180);
+            let midCWy = arcCenter.y + rc.R_off * Math.sin(aMidCW * Math.PI / 180);
+
+            let distCCW = Math.hypot(midCCWx - rc.C_off.x, midCCWy - rc.C_off.y);
+            let distCW = Math.hypot(midCWx - rc.C_off.x, midCWy - rc.C_off.y);
+
+            if (distCCW < distCW) { dxfStart = aStart; dxfEnd = aEnd; } 
+            else { dxfStart = aEnd; dxfEnd = aStart; }
+            arcMid = (distCCW < distCW) ? {x: midCCWx, y: midCCWy} : {x: midCWx, y: midCWy};
         }
-        corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, bulge });
+        corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, arcCenter, dxfStart, dxfEnd });
     }
     return corners;
-}
-
-function getDXFPolyline(layer, corners, isClosed, sec = null) {
-    const n = corners.length;
-    let dxf = ["  0", "POLYLINE", "  8", layer, " 66", "1", " 70", isClosed ? "1" : "0"];
-    let pts = [];
-    
-    if (isClosed) {
-        for (let i = 0; i < n; i++) {
-            let c = corners[i];
-            pts.push({ x: c.arcStart.x, y: c.arcStart.y, bulge: c.R_off > 0 ? c.bulge : 0 });
-            if (c.R_off > 0) pts.push({ x: c.arcEnd.x, y: c.arcEnd.y, bulge: 0 });
-        }
-    } else {
-        for (let i = 0; i < sec.length; i++) {
-            let edgeIdx = sec[i], c1 = corners[edgeIdx], c2 = corners[(edgeIdx + 1) % n];
-            if (i === 0) pts.push({ x: c1.arcEnd.x, y: c1.arcEnd.y, bulge: 0 });
-            let useBulge = (i < sec.length - 1 && c2.R_off > 0);
-            pts.push({ x: c2.arcStart.x, y: c2.arcStart.y, bulge: useBulge ? c2.bulge : 0 });
-            if (useBulge) pts.push({ x: c2.arcEnd.x, y: c2.arcEnd.y, bulge: 0 });
-        }
-    }
-    
-    pts.forEach(p => {
-        dxf.push("  0", "VERTEX", "  8", layer, " 10", p.x.toFixed(4), " 20", p.y.toFixed(4), " 42", (p.bulge || 0).toFixed(8));
-    });
-    dxf.push("  0", "SEQEND", "  8", layer);
-    return dxf;
 }
 
 function updateBandingUI(radii) {
@@ -307,31 +295,65 @@ function drawTrapezium(targetCanvas = null) {
 }
 
 function drawDimensions(ctx, pts, scale, offsetX, offsetY) {
-    const TL = pts[0], TR = pts[1], BR = pts[2], BL = pts[3];
-    drawDimLine(ctx, TL[0] * scale + offsetX, TL[1] * scale + offsetY, TR[0] * scale + offsetX, TR[1] * scale + offsetY, `${Number((TR[0] - TL[0]).toFixed(2))} mm`, "above");
-    drawDimLine(ctx, BL[0] * scale + offsetX, BL[1] * scale + offsetY, BR[0] * scale + offsetX, BR[1] * scale + offsetY, `${Number((BR[0] - BL[0]).toFixed(2))} mm`, "below");
-    const shapeLeft = Math.min(TL[0] * scale + offsetX, BL[0] * scale + offsetX), scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1, dimOffset = 25 * scaleFactor, spaceLeft = shapeLeft, spaceRight = ctx.canvas.width - Math.max(TR[0] * scale + offsetX, BR[0] * scale + offsetX);
-    let position = (spaceRight > spaceLeft) ? "right" : "left", dimX = (position === "right") ? Math.max(TR[0] * scale + offsetX, BR[0] * scale + offsetX) + dimOffset : shapeLeft - dimOffset;
-    drawDimLine(ctx, dimX, TL[1] * scale + offsetY, dimX, BL[1] * scale + offsetY, `${Number((BL[1] - TL[1]).toFixed(2))} mm`, position);
-}
-
-function drawDimLine(ctx, x1, y1, x2, y2, label, position) {
     const scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1;
-    const offset = 25 * scaleFactor, textOffset = 15 * scaleFactor;
-    ctx.font = `bold ${Math.max(12, 16 * scaleFactor)}px Arial`;
-    let lineX1 = x1, lineY1 = y1, lineX2 = x2, lineY2 = y2;
-    if (position === "above") { lineY1 -= offset; lineY2 -= offset; } else if (position === "below") { lineY1 += offset; lineY2 += offset; } else if (position === "left") { lineX1 -= offset; lineX2 -= offset; } else if (position === "right") { lineX1 += offset; lineX2 += offset; }
-    ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, 1.5 * scaleFactor); ctx.stroke();
-    drawArrow(ctx, lineX1, lineY1, lineX2, lineY2, scaleFactor); drawArrow(ctx, lineX2, lineY2, lineX1, lineY1, scaleFactor);
-    ctx.textAlign = (position === "left") ? "right" : (position === "right" ? "left" : "center"); ctx.textBaseline = (position === "below") ? "top" : (position === "above" ? "bottom" : "middle");
-    let textX = (lineX1 + lineX2) / 2, textY = (lineY1 + lineY2) / 2;
-    if (position === "above") textY -= textOffset; else if (position === "below") textY += textOffset; else if (position === "left") textX -= textOffset; else if (position === "right") textX += textOffset;
-    ctx.fillStyle = "#000"; ctx.fillText(label, textX, textY);
+    ctx.font = `bold ${Math.max(12, 16 * scaleFactor)}px Arial`; ctx.fillStyle = "#000"; ctx.textAlign = "center";
+    const n = pts.length, cx = pts.reduce((s, p) => s + p[0], 0) / n * scale + offsetX, cy = pts.reduce((s, p) => s + p[1], 0) / n * scale + offsetY;
+    for (let i = 0; i < n; i++) {
+        const p1 = pts[i], p2 = pts[(i + 1) % n], x1 = p1[0] * scale + offsetX, y1 = p1[1] * scale + offsetY, x2 = p2[0] * scale + offsetX, y2 = p2[1] * scale + offsetY;
+        const dx = x2 - x1, dy = y2 - y1, len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 5) continue;
+        let nx = -dy / len, ny = dx / len;
+        if (Math.hypot(((x1+x2)/2 + nx*10) - cx, ((y1+y2)/2 + ny*10) - cy) < Math.hypot((x1+x2)/2 - cx, (y1+y2)/2 - cy)) { nx = -nx; ny = -ny; }
+        const dimOffset = 35 * scaleFactor, lx1 = x1 + nx * dimOffset, ly1 = y1 + ny * dimOffset, lx2 = x2 + nx * dimOffset, ly2 = y2 + ny * dimOffset, mx = (lx1 + lx2) / 2, my = (ly1 + ly2) / 2;
+        const label = `${Math.sqrt(Math.pow(p2[0]-p1[0], 2) + Math.pow(p2[1]-p1[1], 2)).toFixed(1)} mm`, textWidth = ctx.measureText(label).width + (15 * scaleFactor), angle = Math.atan2(ly2 - ly1, lx2 - lx1);
+        ctx.beginPath(); ctx.moveTo(lx1, ly1); ctx.lineTo(mx - Math.cos(angle) * (textWidth/2), my - Math.sin(angle) * (textWidth/2)); ctx.moveTo(mx + Math.cos(angle) * (textWidth/2), my + Math.sin(angle) * (textWidth/2)); ctx.lineTo(lx2, ly2); ctx.strokeStyle = "#444"; ctx.lineWidth = 1.5 * scaleFactor; ctx.stroke();
+        const size = 10 * scaleFactor; ctx.beginPath(); ctx.moveTo(lx2, ly2); ctx.lineTo(lx2 - size * Math.cos(angle - Math.PI / 6), ly2 - size * Math.sin(angle - Math.PI / 6)); ctx.lineTo(lx2 - size * Math.cos(angle + Math.PI / 6), ly2 - size * Math.sin(angle + Math.PI / 6)); ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
+        ctx.fillText(label, mx, my + (5 * scaleFactor));
+    }
 }
 
-function drawArrow(ctx, x1, y1, x2, y2, scaleFactor) {
-    const size = 10 * scaleFactor, arrowOffset = 8 * scaleFactor, angle = Math.atan2(y2 - y1, x2 - x1), tipX = x2 + arrowOffset * Math.cos(angle), tipY = y2 + arrowOffset * Math.sin(angle);
-    ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.lineTo(tipX - size * Math.cos(angle - Math.PI / 6), tipY - size * Math.sin(angle - Math.PI / 6)); ctx.lineTo(tipX - size * Math.cos(angle + Math.PI / 6), tipY - size * Math.sin(angle + Math.PI / 6)); ctx.closePath(); ctx.fillStyle = "#000"; ctx.fill();
+function getDXFEntities(corners, layer, isClosed, sec = null) {
+    let dxf = [];
+    const n = corners.length;
+    
+    function getCornerEndpoints(c) {
+        if (c.R_off <= 0.001) return { start: c.C_off, end: c.C_off };
+        let p1 = {
+            x: c.arcCenter.x + c.R_off * Math.cos(c.dxfStart * Math.PI / 180),
+            y: c.arcCenter.y + c.R_off * Math.sin(c.dxfStart * Math.PI / 180)
+        };
+        let p2 = {
+            x: c.arcCenter.x + c.R_off * Math.cos(c.dxfEnd * Math.PI / 180),
+            y: c.arcCenter.y + c.R_off * Math.sin(c.dxfEnd * Math.PI / 180)
+        };
+        let d1Start = Math.hypot(p1.x - c.arcStart.x, p1.y - c.arcStart.y);
+        let d1End = Math.hypot(p1.x - c.arcEnd.x, p1.y - c.arcEnd.y);
+        return (d1Start < d1End) ? { start: p1, end: p2 } : { start: p2, end: p1 };
+    }
+
+    const pushLine = (p1, p2) => {
+        if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.001) return;
+        dxf.push("  0", "LINE", "  8", layer, " 10", p1.x.toFixed(8), " 20", p1.y.toFixed(8), " 11", p2.x.toFixed(8), " 21", p2.y.toFixed(8));
+    };
+    const pushArc = (c) => {
+        if (c.R_off <= 0.001) return;
+        dxf.push("  0", "ARC", "  8", layer, " 10", c.arcCenter.x.toFixed(8), " 20", c.arcCenter.y.toFixed(8), " 40", c.R_off.toFixed(8), " 50", c.dxfStart.toFixed(8), " 51", c.dxfEnd.toFixed(8));
+    };
+
+    if (isClosed) {
+        for (let i = 0; i < n; i++) {
+            let c1 = corners[i], c2 = corners[(i + 1) % n];
+            pushArc(c1);
+            pushLine(getCornerEndpoints(c1).end, getCornerEndpoints(c2).start);
+        }
+    } else {
+        for (let i = 0; i < sec.length; i++) {
+            let edgeIdx = sec[i], c1 = corners[edgeIdx], c2 = corners[(edgeIdx + 1) % n];
+            pushLine(getCornerEndpoints(c1).end, getCornerEndpoints(c2).start);
+            if (i < sec.length - 1) pushArc(c2);
+        }
+    }
+    return dxf;
 }
 
 function downloadPNG() {
@@ -356,14 +378,14 @@ function downloadDXF() {
     ];
     
     const baseCorners = generatePathData(pts, 0, radii);
-    dxf = dxf.concat(getDXFPolyline("Shape", baseCorners, true));
+    dxf = dxf.concat(getDXFEntities(baseCorners, "Shape", true, null));
     
     const bandCorners = generatePathData(pts, 12, radii);
     currentSections.forEach((sec, sIdx) => {
         const cb = document.getElementById(`bandSec${sIdx}`);
         if (cb && cb.checked) {
-            if (sec.length === n) dxf = dxf.concat(getDXFPolyline("Edge_Banding", bandCorners, true)); 
-            else dxf = dxf.concat(getDXFPolyline("Edge_Banding", bandCorners, false, sec));
+            if (sec.length === n) dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", true, null)); 
+            else dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", false, sec));
         }
     });
     
