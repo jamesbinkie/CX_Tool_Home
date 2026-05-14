@@ -133,9 +133,6 @@ function validateRadii() {
         let clamped = false;
         for (let i = 0; i < n; i++) {
             let r1 = radii[i], r2 = radii[(i + 1) % n];
-            let minR1 = (r1 > 0 && isCornerBanded(i, n)) ? 50 : 0;
-            let minR2 = (r2 > 0 && isCornerBanded((i + 1) % n, n)) ? 50 : 0;
-
             let d1 = r1 * alphas[i], d2 = r2 * alphas[(i + 1) % n];
             let len = edges[i].len;
             if (d1 + d2 > len + 0.001) {
@@ -341,31 +338,115 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     return corners;
 }
 
-function getDXFEntities(corners, layer, isClosed, sec = null) {
+// --- DXF helpers for POLYLINE with bulge arcs ---
+
+function getExactPoints(c) {
+    if (c.R_off <= 0.001) {
+        return { enter: c.C_off, exit: c.C_off };
+    }
+
+    let cx = c.arcCenter.x;
+    let cy = c.arcCenter.y;
+    let r = c.R_off;
+    let a1 = c.dxfStart * Math.PI / 180;
+    let a2 = c.dxfEnd * Math.PI / 180;
+
+    let pt1 = { x: cx + r * Math.cos(a1), y: cy + r * Math.sin(a1) };
+    let pt2 = { x: cx + r * Math.cos(a2), y: cy + r * Math.sin(a2) };
+
+    if (c.drawCCW) {
+        return { enter: pt1, exit: pt2 };
+    } else {
+        return { enter: pt2, exit: pt1 };
+    }
+}
+
+function getBulge(c) {
+    if (c.R_off <= 0.001) return 0;
+
+    let sweepRad;
+    if (c.drawCCW) {
+        let sweepDeg = (c.dxfEnd - c.dxfStart + 360) % 360;
+        sweepRad = sweepDeg * Math.PI / 180;
+        return Math.tan(sweepRad / 4);
+    } else {
+        let sweepDeg = (c.dxfStart - c.dxfEnd + 360) % 360;
+        sweepRad = sweepDeg * Math.PI / 180;
+        return -Math.tan(sweepRad / 4);
+    }
+}
+
+function getDXFPolyline(corners, layer, isClosed) {
     let dxf = [];
     const n = corners.length;
+    const exact = corners.map(c => getExactPoints(c));
 
-    function getExactPoints(c) {
-        if (c.R_off <= 0.001) {
-            return { enter: c.C_off, exit: c.C_off };
-        }
+    // Build ordered vertex list: line segments + arc segments via bulge
+    let vertices = [];
 
-        let cx = c.arcCenter.x;
-        let cy = c.arcCenter.y;
-        let r = c.R_off;
-        let a1 = c.dxfStart * Math.PI / 180;
-        let a2 = c.dxfEnd * Math.PI / 180;
+    for (let i = 0; i < n; i++) {
+        const c = corners[i];
+        const ex = exact[i];
 
-        let pt1 = { x: cx + r * Math.cos(a1), y: cy + r * Math.sin(a1) };
-        let pt2 = { x: cx + r * Math.cos(a2), y: cy + r * Math.sin(a2) };
+        if (c.R_off > 0.001) {
+            const bulge = getBulge(c);
 
-        if (c.drawCCW) {
-            return { enter: pt1, exit: pt2 };
+            // Arc from enter -> exit
+            // 1) enter vertex with bulge
+            if (vertices.length === 0 || Math.hypot(vertices[vertices.length - 1].x - ex.enter.x, vertices[vertices.length - 1].y - ex.enter.y) > 1e-6) {
+                vertices.push({ x: ex.enter.x, y: ex.enter.y, bulge });
+            } else {
+                // If same point as previous, just set bulge on previous
+                vertices[vertices.length - 1].bulge = bulge;
+            }
+
+            // 2) exit vertex (end of arc, start of next line)
+            vertices.push({ x: ex.exit.x, y: ex.exit.y, bulge: 0 });
         } else {
-            return { enter: pt2, exit: pt1 };
+            // Sharp corner: single vertex at corner point
+            const p = ex.enter;
+            if (vertices.length === 0 || Math.hypot(vertices[vertices.length - 1].x - p.x, vertices[vertices.length - 1].y - p.y) > 1e-6) {
+                vertices.push({ x: p.x, y: p.y, bulge: 0 });
+            }
         }
     }
 
+    // POLYLINE header
+    dxf.push(
+        "  0", "POLYLINE",
+        "  8", layer,
+        " 66", "1",
+        " 70", isClosed ? "1" : "0",
+        " 10", "0.0",
+        " 20", "0.0",
+        " 30", "0.0"
+    );
+
+    // VERTEX entities
+    vertices.forEach(v => {
+        dxf.push(
+            "  0", "VERTEX",
+            "  8", layer,
+            " 10", v.x.toFixed(8),
+            " 20", v.y.toFixed(8),
+            " 30", "0.0"
+        );
+        if (Math.abs(v.bulge) > 1e-9) {
+            dxf.push(" 42", v.bulge.toFixed(8));
+        }
+    });
+
+    // SEQEND
+    dxf.push("  0", "SEQEND", "  8", layer);
+
+    return dxf;
+}
+
+// For partial banding sections (open), we can still use simple LINE/ARC entities.
+// They don't need to be a single contour for cutting.
+function getDXFEntitiesOpenBand(corners, layer, sec) {
+    let dxf = [];
+    const n = corners.length;
     const exact = corners.map(c => getExactPoints(c));
 
     const pushLine = (p1, p2) => {
@@ -393,32 +474,22 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
         );
     };
 
-    if (isClosed) {
-        for (let i = 0; i < n; i++) {
-            pushArc(corners[i]);
-            pushLine(exact[i].exit, exact[(i + 1) % n].enter);
+    for (let i = 0; i < sec.length; i++) {
+        let edgeIdx = sec[i];
+        let c1 = corners[edgeIdx];
+        let c2 = corners[(edgeIdx + 1) % n];
+
+        if (i === 0) {
+            pushLine(exact[edgeIdx].exit, exact[(edgeIdx + 1) % n].enter);
         }
-    } else {
-        // Open banding sections along selected edges
-        for (let i = 0; i < sec.length; i++) {
-            let edgeIdx = sec[i];
-            let c1 = corners[edgeIdx];
-            let c2 = corners[(edgeIdx + 1) % n];
 
-            if (i === 0) {
-                // First edge: just the line between its two corners
-                pushLine(exact[edgeIdx].exit, exact[(edgeIdx + 1) % n].enter);
-            }
+        if (i < sec.length - 1) {
+            let cornerIdx = (edgeIdx + 1) % n;
+            pushArc(corners[cornerIdx]);
 
-            if (i < sec.length - 1) {
-                // Internal corner after this edge
-                let cornerIdx = (edgeIdx + 1) % n;
-                pushArc(corners[cornerIdx]);
-
-                let nextEdgeIdx = sec[i + 1];
-                let nextCornerIdx = (nextEdgeIdx + 1) % n;
-                pushLine(exact[cornerIdx].exit, exact[nextCornerIdx].enter);
-            }
+            let nextEdgeIdx = sec[i + 1];
+            let nextCornerIdx = (nextEdgeIdx + 1) % n;
+            pushLine(exact[cornerIdx].exit, exact[nextCornerIdx].enter);
         }
     }
 
@@ -700,17 +771,21 @@ function downloadDXF() {
         "  2", "ENTITIES"
     ];
 
+    // Main shape as a single closed POLYLINE with bulge arcs
     const baseCorners = generatePathData(pts, 0, radii);
-    dxf = dxf.concat(getDXFEntities(baseCorners, "Shape", true, null));
+    dxf = dxf.concat(getDXFPolyline(baseCorners, "Shape", true));
 
+    // Edge banding offset
     const bandCorners = generatePathData(pts, 12, radii);
     currentSections.forEach((sec, sIdx) => {
         const cb = document.getElementById(`bandSec${sIdx}`);
         if (cb && cb.checked) {
             if (sec.length === n) {
-                dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", true, null));
+                // Full loop banding as closed polyline
+                dxf = dxf.concat(getDXFPolyline(bandCorners, "Edge_Banding", true));
             } else {
-                dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", false, sec));
+                // Partial banding as open LINE/ARC entities
+                dxf = dxf.concat(getDXFEntitiesOpenBand(bandCorners, "Edge_Banding", sec));
             }
         }
     });
