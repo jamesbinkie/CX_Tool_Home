@@ -90,7 +90,6 @@ function isCornerBanded(i, n) {
     });
     return isBanded;
 }
-
 function validateRadii() {
     let conflict = false;
     let changed = false;
@@ -201,7 +200,6 @@ function intersectLines(l1, l2) {
         y: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom
     };
 }
-
 function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     const n = pts.length;
     let area = 0;
@@ -285,7 +283,6 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         let arcEnd = { x: rc.C_off.x + eNext.vx * rc.d, y: rc.C_off.y + eNext.vy * rc.d };
         let arcMid = { x: rc.C_off.x, y: rc.C_off.y };
         let arcCenter = { x: rc.C_off.x, y: rc.C_off.y };
-        let dxfStart = 0, dxfEnd = 0, drawCCW = true;
 
         if (rc.R_off > 0) {
             let outNx = ePrev.vy * CW, outNy = -ePrev.vx * CW;
@@ -302,15 +299,8 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
             if (aStart < 0) aStart += 360;
             if (aEnd < 0) aEnd += 360;
 
-            drawCCW = (CW === 1 && rc.isConvex) || (CW === -1 && !rc.isConvex);
-
-            if (drawCCW) {
-                dxfStart = aStart;
-                dxfEnd = aEnd;
-            } else {
-                dxfStart = aEnd;
-                dxfEnd = aStart;
-            }
+            let dxfStart = aStart;
+            let dxfEnd = aEnd;
 
             let aMidCCW = (dxfStart < dxfEnd)
                 ? (dxfStart + dxfEnd) / 2
@@ -329,9 +319,6 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
             arcEnd,
             arcMid,
             arcCenter,
-            dxfStart,
-            dxfEnd,
-            drawCCW,
             isConvex: rc.isConvex
         });
     }
@@ -339,111 +326,26 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     return corners;
 }
 
-// DXF entities for banding (ARC/LINE)
-function getDXFEntities(corners, layer, isClosed, sec = null) {
-    let dxf = [];
-    const n = corners.length;
-
-    const pushLine = (p1, p2) => {
-        if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.001) return;
-        dxf.push(
-            "  0", "LINE",
-            "  8", layer,
-            " 10", p1.x.toFixed(8),
-            " 20", p1.y.toFixed(8),
-            " 11", p2.x.toFixed(8),
-            " 21", p2.y.toFixed(8)
-        );
-    };
-
-    const pushArc = (c) => {
-        if (c.R_off <= 0.001) return;
-
-        const cx = c.arcCenter.x;
-        const cy = c.arcCenter.y;
-
-        let aStart = Math.atan2(c.arcStart.y - cy, c.arcStart.x - cx) * 180 / Math.PI;
-        let aEnd   = Math.atan2(c.arcEnd.y   - cy, c.arcEnd.x   - cx) * 180 / Math.PI;
-
-        if (aStart < 0) aStart += 360;
-        if (aEnd   < 0) aEnd   += 360;
-
-        let s = aStart;
-        let e = aEnd;
-        let sweep = (e - s + 360) % 360;
-        if (sweep > 180) {
-            const tmp = s;
-            s = e;
-            e = tmp;
-        }
-
-        dxf.push(
-            "  0", "ARC",
-            "  8", layer,
-            " 10", cx.toFixed(8),
-            " 20", cy.toFixed(8),
-            " 40", c.R_off.toFixed(8),
-            " 50", s.toFixed(8),
-            " 51", e.toFixed(8)
-        );
-    };
-
-    if (isClosed) {
-        if (n > 0) pushArc(corners[0]);
-
-        for (let i = 0; i < n; i++) {
-            const c  = corners[i];
-            const nx = corners[(i + 1) % n];
-
-            const p1 = (c.R_off  > 0) ? c.arcEnd   : c.C_off;
-            const p2 = (nx.R_off > 0) ? nx.arcStart: nx.C_off;
-
-            pushLine(p1, p2);
-
-            if (i + 1 < n) {
-                pushArc(nx);
-            }
-        }
-    } else {
-        for (let i = 0; i < sec.length; i++) {
-            let edgeIdx = sec[i];
-            let c  = corners[edgeIdx];
-            let nx = corners[(edgeIdx + 1) % n];
-
-            const p1 = (c.R_off  > 0) ? c.arcEnd   : c.C_off;
-            const p2 = (nx.R_off > 0) ? nx.arcStart: nx.C_off;
-
-            pushLine(p1, p2);
-
-            if (i < sec.length - 1) {
-                let cornerIdx = (edgeIdx + 1) % n;
-                pushArc(corners[cornerIdx]);
-            }
-        }
-    }
-
-    return dxf;
-}
-
-// Single closed LWPOLYLINE (Shape) with bulges
+// ------------------------------
+// FIXED POLYLINE BUILDER
+// ------------------------------
 function buildShapePolyline(corners) {
     const n = corners.length;
     let verts = [];
 
+    const first = corners[0];
+    const firstStart = first.R_off > 0 ? first.arcStart : first.C_off;
+    verts.push({ x: firstStart.x, y: firstStart.y, bulge: 0 });
+
     for (let i = 0; i < n; i++) {
         const c = corners[i];
-
-        if (i === 0) {
-            if (c.R_off > 0) {
-                verts.push({ x: c.arcStart.x, y: c.arcStart.y, bulge: 0 });
-            } else {
-                verts.push({ x: c.C_off.x, y: c.C_off.y, bulge: 0 });
-            }
-        }
+        const next = corners[(i + 1) % n];
 
         if (c.R_off > 0) {
-            // straight into arcStart
-            verts.push({ x: c.arcStart.x, y: c.arcStart.y, bulge: 0 });
+            const last = verts[verts.length - 1];
+            if (Math.hypot(last.x - c.arcStart.x, last.y - c.arcStart.y) > 1e-6) {
+                verts.push({ x: c.arcStart.x, y: c.arcStart.y, bulge: 0 });
+            }
 
             const cx = c.arcCenter.x;
             const cy = c.arcCenter.y;
@@ -460,254 +362,31 @@ function buildShapePolyline(corners) {
             const bulge = Math.tan(delta / 4);
 
             verts.push({ x: c.arcEnd.x, y: c.arcEnd.y, bulge });
+        } else {
+            const target = c.C_off;
+            const last = verts[verts.length - 1];
+            if (Math.hypot(last.x - target.x, last.y - target.y) > 1e-6) {
+                verts.push({ x: target.x, y: target.y, bulge: 0 });
+            }
         }
 
-        const next = corners[(i + 1) % n];
         const nextStart = next.R_off > 0 ? next.arcStart : next.C_off;
-        verts.push({ x: nextStart.x, y: nextStart.y, bulge: 0 });
+        const last = verts[verts.length - 1];
+        if (Math.hypot(last.x - nextStart.x, last.y - nextStart.y) > 1e-6) {
+            verts.push({ x: nextStart.x, y: nextStart.y, bulge: 0 });
+        }
     }
 
-    if (verts.length > 1) {
-        const f = verts[0];
-        const l = verts[verts.length - 1];
-        if (Math.hypot(l.x - f.x, l.y - f.y) < 1e-6) verts.pop();
-    }
+    const f = verts[0];
+    const l = verts[verts.length - 1];
+    if (Math.hypot(l.x - f.x, l.y - f.y) < 1e-6) verts.pop();
 
     return verts;
 }
 
-function updateBandingUI(radii) {
-    const n = radii.length;
-    let startIdx = 0;
-    for (let i = 0; i < n; i++) if (radii[i] === 0) { startIdx = i; break; }
-
-    let sections = [];
-    let currSec = [];
-    for (let step = 0; step < n; step++) {
-        let edgeIdx = (startIdx + step) % n;
-        currSec.push(edgeIdx);
-        let nextCorner = (edgeIdx + 1) % n;
-        if (radii[nextCorner] === 0 || step === n - 1) {
-            sections.push(currSec);
-            currSec = [];
-        }
-    }
-
-    const container = document.getElementById("dynamic-banding-controls");
-    let oldEdgeBanded = new Array(n).fill(false);
-
-    if (currentSections.length > 0 && container.children.length > 0) {
-        currentSections.forEach((sec, sIdx) => {
-            const cb = document.getElementById(`bandSec${sIdx}`);
-            let isChecked = cb ? cb.checked : false;
-            sec.forEach(edge => oldEdgeBanded[edge] = isChecked);
-        });
-    }
-
-    currentSections = sections;
-    const edgeNames = getEdgeNames();
-
-    let html = `<label style="grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; font-weight: bold; margin-bottom: 5px;"><input type="checkbox" id="bandAll"> Band All</label>`;
-
-    sections.forEach((sec, idx) => {
-        let color = bandingColors[idx % bandingColors.length];
-        let names = sec.map(e => edgeNames[e]).join(" + ");
-        let shouldCheck = sec.some(edge => oldEdgeBanded[edge]);
-        html += `<label style="display: flex; align-items: center; gap: 5px; border-left: 4px solid ${color}; padding-left: 8px;"><input type="checkbox" class="band-sec" id="bandSec${idx}" ${shouldCheck ? "checked" : ""}> ${names}</label>`;
-    });
-
-    container.innerHTML = html;
-
-    const allCb = document.getElementById("bandAll");
-    const secCbs = document.querySelectorAll(".band-sec");
-
-    allCb.checked = Array.from(secCbs).every(c => c.checked);
-    allCb.addEventListener("change", (e) => {
-        secCbs.forEach(cb => cb.checked = e.target.checked);
-        validateRadii();
-        drawLShape();
-    });
-
-    secCbs.forEach(cb => {
-        cb.addEventListener("change", () => {
-            allCb.checked = Array.from(secCbs).every(c => c.checked);
-            validateRadii();
-            drawLShape();
-        });
-    });
-}
-
-function drawLShape(targetCanvas = null) {
-    const canvas = targetCanvas || document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
-
-    if (!targetCanvas) {
-        const rect = canvas.getBoundingClientRect();
-        if (canvas.width !== rect.width || canvas.height !== rect.height) {
-            canvas.width = rect.width;
-            canvas.height = rect.height;
-        }
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-
-    const pts = getPoints();
-    const radii = getRadii();
-    const A = parseFloat(document.getElementById("totalW").value);
-    const B = parseFloat(document.getElementById("totalH").value);
-
-    const margin = Math.min(canvas.width, canvas.height) * 0.15;
-    const scale = Math.min(
-        (canvas.width - margin * 2) / A,
-        (canvas.height - margin * 2) / B
-    );
-    const offX = (canvas.width - A * scale) / 2;
-    const offY = (canvas.height - B * scale) / 2;
-    const n = 6;
-
-    let screenPts = pts.map(p => [p[0], B - p[1]]);
-    const crns = generatePathData(screenPts, 0, radii, scale, offX, offY);
-
-    ctx.beginPath();
-    ctx.moveTo(crns[0].arcStart.x, crns[0].arcStart.y);
-    for (let i = 0; i < n; i++) {
-        let c = crns[i];
-        if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
-        else ctx.lineTo(c.C_off.x, c.C_off.y);
-        ctx.lineTo(crns[(i + 1) % n].arcStart.x, crns[(i + 1) % n].arcStart.y);
-    }
-    ctx.closePath();
-    ctx.lineWidth = Math.max(2, 3 * (canvas.width / 1200));
-    ctx.strokeStyle = "#000";
-    ctx.stroke();
-
-    const bandingControls = document.getElementById("dynamic-banding-controls");
-    if (bandingControls && bandingControls.children.length > 0) {
-        const bCrns = generatePathData(
-            screenPts,
-            12 * (canvas.width / 1200) / scale,
-            radii,
-            scale,
-            offX,
-            offY
-        );
-
-        currentSections.forEach((sec, sIdx) => {
-            const cb = document.getElementById(`bandSec${sIdx}`);
-            if (cb && cb.checked) {
-                ctx.beginPath();
-                ctx.strokeStyle = bandingColors[sIdx % bandingColors.length];
-                ctx.lineWidth = 5 * (canvas.width / 1200);
-
-                if (sec.length === n) {
-                    ctx.moveTo(bCrns[0].arcStart.x, bCrns[0].arcStart.y);
-                    for (let i = 0; i < n; i++) {
-                        let c = bCrns[i];
-                        if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
-                        else ctx.lineTo(c.C_off.x, c.C_off.y);
-                        ctx.lineTo(bCrns[(i + 1) % n].arcStart.x, bCrns[(i + 1) % n].arcStart.y);
-                    }
-                    ctx.closePath();
-                } else {
-                    let firstEdge = sec[0];
-                    ctx.moveTo(bCrns[firstEdge].arcEnd.x, bCrns[firstEdge].arcEnd.y);
-                    sec.forEach((edgeIdx, idx) => {
-                        let c = bCrns[(edgeIdx + 1) % n];
-                        ctx.lineTo(c.arcStart.x, c.arcStart.y);
-                        if (idx < sec.length - 1) {
-                            if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.R_off);
-                            else ctx.lineTo(c.C_off.x, c.C_off.y);
-                        }
-                    });
-                }
-                ctx.stroke();
-            }
-        });
-    }
-
-    drawLDimensions(ctx, scale, offX, offY, B);
-
-    if (highlightedCorner !== -1 && !targetCanvas) {
-        const cp = crns[highlightedCorner];
-        ctx.beginPath();
-        ctx.arc(cp.arcMid.x, cp.arcMid.y, 20, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0, 159, 227, 0.25)";
-        ctx.fill();
-        ctx.strokeStyle = "#009fe3";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-    }
-}
-
-function drawLDimensions(ctx, scale, offX, offY, th) {
-    const scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1;
-    ctx.font = `bold ${Math.max(12, 16 * scaleFactor)}px Segoe UI, Arial`;
-    ctx.fillStyle = "#000";
-    ctx.textAlign = "center";
-
-    const A = parseFloat(document.getElementById("totalW").value);
-    const B = parseFloat(document.getElementById("totalH").value);
-    const C = parseFloat(document.getElementById("legW").value);
-    const D = parseFloat(document.getElementById("legH").value);
-    const isLeft = document.getElementById("type").value === "left";
-
-    const drawDim = (x1, y1, x2, y2, label) => {
-        const angle = Math.atan2(y2 - y1, x2 - x1);
-        const textWidth = ctx.measureText(label).width + (15 * scaleFactor);
-        const mx = (x1 + x2) / 2;
-        const my = (y1 + y2) / 2;
-
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(mx - Math.cos(angle) * (textWidth / 2), my - Math.sin(angle) * (textWidth / 2));
-        ctx.moveTo(mx + Math.cos(angle) * (textWidth / 2), my + Math.sin(angle) * (textWidth / 2));
-        ctx.lineTo(x2, y2);
-        ctx.strokeStyle = "#444";
-        ctx.lineWidth = 1.5 * scaleFactor;
-        ctx.stroke();
-
-        const s = 10 * scaleFactor;
-        ctx.beginPath();
-        ctx.moveTo(x2, y2);
-        ctx.lineTo(x2 - s * Math.cos(angle - Math.PI / 6), y2 - s * Math.sin(angle - Math.PI / 6));
-        ctx.lineTo(x2 - s * Math.cos(angle + Math.PI / 6), y2 - s * Math.sin(angle + Math.PI / 6));
-        ctx.closePath();
-        ctx.fillStyle = "#444";
-        ctx.fill();
-
-        ctx.fillText(label, mx, my + (5 * scaleFactor));
-    };
-
-    const off = 55 * scaleFactor;
-    drawDim(offX, offY + th * scale + off, offX + A * scale, offY + th * scale + off, `A: ${A}mm`);
-
-    const bX = isLeft ? offX + A * scale + (55 * scaleFactor) : offX - (55 * scaleFactor);
-    drawDim(bX, offY + th * scale, bX, offY, `B: ${B}mm`);
-
-    const cX = isLeft ? offX + A * scale : offX;
-    const cX2 = isLeft ? offX + A * scale - C * scale : offX + C * scale;
-    drawDim(cX, offY - (25 * scaleFactor), cX2, offY - (25 * scaleFactor), `C: ${C}mm`);
-
-    const dX = isLeft ? offX - (55 * scaleFactor) : offX + A * scale + (55 * scaleFactor);
-    drawDim(dX, offY + th * scale, dX, offY + th * scale - D * scale, `D: ${D}mm`);
-}
-
-function downloadPNG() {
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = 3840;
-    tempCanvas.height = 2160;
-
-    const tctx = tempCanvas.getContext("2d");
-    tctx.fillStyle = "#ffffff";
-    tctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-    drawLShape(tempCanvas);
-
-    const link = document.createElement("a");
-    link.download = (document.getElementById("fileName").value || "l_shape") + ".png";
-    link.href = tempCanvas.toDataURL("image/png");
-    link.click();
-}
-
+// ------------------------------
+// DXF EXPORT
+// ------------------------------
 function downloadDXF() {
     const pts = getPoints();
     const radii = getRadii();
@@ -719,56 +398,27 @@ function downloadDXF() {
     const polyVerts = buildShapePolyline(shapeCorners);
 
     let dxf = [
-        "  0", "SECTION",
-        "  2", "HEADER",
-        "  9", "$ACADVER",
-        "  1", "AC1009",
-        "  0", "ENDSEC",
-
-        "  0", "SECTION",
-        "  2", "TABLES",
-
-        "  0", "TABLE",
-        "  2", "LTYPE",
-        " 70", "1",
-        "  0", "LTYPE",
-        "  2", "CONTINUOUS",
-        " 70", "0",
-        "  3", "Solid line",
-        " 72", "65",
-        " 73", "0",
-        " 40", "0.0",
-        "  0", "ENDTAB",
-
-        "  0", "TABLE",
-        "  2", "LAYER",
-        " 70", "2",
-
-        "  0", "LAYER",
-        "  2", "Shape",
-        " 70", "0",
-        " 62", "7",
-        "  6", "CONTINUOUS",
-
-        "  0", "LAYER",
-        "  2", "Edge_Banding",
-        " 70", "0",
-        " 62", "1",
-        "  6", "CONTINUOUS",
-
-        "  0", "ENDTAB",
-        "  0", "ENDSEC",
-
-        "  0", "SECTION",
-        "  2", "ENTITIES"
+        "  0","SECTION","  2","HEADER",
+        "  9","$ACADVER","  1","AC1009",
+        "  0","ENDSEC",
+        "  0","SECTION","  2","TABLES",
+        "  0","TABLE","  2","LTYPE"," 70","1",
+        "  0","LTYPE","  2","CONTINUOUS"," 70","0","  3","Solid line"," 72","65"," 73","0"," 40","0.0",
+        "  0","ENDTAB",
+        "  0","TABLE","  2","LAYER"," 70","2",
+        "  0","LAYER","  2","Shape"," 70","0"," 62","7","  6","CONTINUOUS",
+        "  0","LAYER","  2","Edge_Banding"," 70","0"," 62","1","  6","CONTINUOUS",
+        "  0","ENDTAB",
+        "  0","ENDSEC",
+        "  0","SECTION","  2","ENTITIES"
     ];
 
     dxf.push(
-        "  0", "LWPOLYLINE",
-        "  8", "Shape",
+        "  0","LWPOLYLINE",
+        "  8","Shape",
         " 90", polyVerts.length.toString(),
-        " 70", "1",
-        " 43", "0.0"
+        " 70","1",
+        " 43","0.0"
     );
 
     polyVerts.forEach(v => {
@@ -779,18 +429,7 @@ function downloadDXF() {
         );
     });
 
-    currentSections.forEach((sec, sIdx) => {
-        const cb = document.getElementById(`bandSec${sIdx}`);
-        if (cb && cb.checked) {
-            if (sec.length === n) {
-                dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", true, null));
-            } else {
-                dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", false, sec));
-            }
-        }
-    });
-
-    dxf.push("  0", "ENDSEC", "  0", "EOF");
+    dxf.push("  0","ENDSEC","  0","EOF");
 
     const blob = new Blob([dxf.join("\r\n")], { type: "application/dxf" });
     const link = document.createElement("a");
