@@ -14,9 +14,9 @@ window.onload = () => {
         if (el) {
             if (el.tagName === "INPUT" && el.type === "number") {
                 el.addEventListener("input", () => { drawLShape(); });
-                el.addEventListener("blur", (e) => { validateAndClamp(e); updateUI(); });
+                el.addEventListener("blur", (e) => { validateAndClamp(); updateUI(); });
             } else {
-                el.addEventListener("change", () => { validateAndClamp(null); updateUI(); });
+                el.addEventListener("change", () => { validateAndClamp(); updateUI(); });
             }
         }
     });
@@ -34,7 +34,7 @@ window.onload = () => {
 
 function updateUI() { refreshHintsAndWarnings(); updateBandingUI(getRadii()); validateRadii(); drawLShape(); }
 
-function validateAndClamp(e = null) {
+function validateAndClamp() {
     const minVal = 200, sheetW = 2400, sheetH = 1200, twIn = document.getElementById("totalW"), thIn = document.getElementById("totalH"), lwIn = document.getElementById("legW"), lhIn = document.getElementById("legH");
     let tw = parseFloat(twIn.value) || minVal, th = parseFloat(thIn.value) || minVal, lw = parseFloat(lwIn.value) || minVal, lh = parseFloat(lhIn.value) || minVal;
     tw = Math.max(minVal, Math.min(tw, sheetW)); th = Math.max(minVal, Math.min(th, sheetW));
@@ -51,20 +51,41 @@ function validateRadii() {
     const pts = getPoints();
     const n = pts.length;
     let changed = false;
-    
-    for(let i=0; i<n; i++) {
-        let p1 = pts[i], p2 = pts[(i+1)%n];
-        let len = Math.hypot(p2[0]-p1[0], p2[1]-p1[1]);
-        let r1 = radii[i], r2 = radii[(i+1)%n];
-        if (r1 + r2 > len) {
-            let factor = len / (r1 + r2 + 0.1);
-            radii[i] *= factor;
-            radii[(i+1)%n] *= factor;
-            changed = true;
-        }
+
+    let edges = [];
+    let area = 0;
+    for (let i = 0; i < n; i++) area += pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1];
+    const CW = area > 0 ? 1 : -1;
+    for (let i = 0; i < n; i++) {
+        const p1 = pts[i], p2 = pts[(i + 1) % n];
+        let vx = p2[0] - p1[0], vy = p2[1] - p1[1], len = Math.hypot(vx, vy) || 1;
+        edges.push({ vx: vx/len, vy: vy/len, len });
     }
+
+    let alphas = [];
+    for (let i = 0; i < n; i++) {
+        let ePrev = edges[(i + n - 1) % n], eNext = edges[i];
+        let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy;
+        alphas.push(Math.abs(Math.tan(Math.atan2(cross, dot) / 2)));
+    }
+
+    for (let iter = 0; iter < 10; iter++) {
+        let clamped = false;
+        for (let i = 0; i < n; i++) {
+            let r1 = radii[i], r2 = radii[(i + 1) % n];
+            let d1 = r1 * alphas[i], d2 = r2 * alphas[(i + 1) % n];
+            let len = edges[i].len;
+            if (d1 + d2 > len) {
+                let factor = len / (d1 + d2 + 0.1);
+                radii[i] *= factor; radii[(i + 1) % n] *= factor;
+                clamped = true; changed = true;
+            }
+        }
+        if (!clamped) break;
+    }
+
     if (changed) {
-        for(let i=0; i<n; i++) document.getElementById(`rad${i}`).value = Math.floor(radii[i]);
+        for (let i = 0; i < n; i++) document.getElementById(`rad${i}`).value = Math.floor(radii[i]);
     }
 
     const finalRadii = getRadii();
@@ -128,8 +149,7 @@ function generatePathData(pts, offset, radii, scale, offX, offY, B_height) {
             d = R_off * Math.abs(Math.tan(alpha / 2)); 
             arcStart = { x: C_off.x - ePrev.vx * d, y: C_off.y - ePrev.vy * d };
             arcEnd = { x: C_off.x + eNext.vx * d, y: C_off.y + eNext.vy * d };
-            let sign = Math.sign(cross) || 1;
-            let nx = -ePrev.vy * sign, ny = ePrev.vx * sign;
+            let sign = Math.sign(cross) || 1, nx = -ePrev.vy * sign, ny = ePrev.vx * sign;
             let cx = arcStart.x + nx * R_off, cy = arcStart.y + ny * R_off;
             let vX = C_off.x - cx, vY = C_off.y - cy, vLen = Math.hypot(vX, vY) || 1;
             arcMid = { x: cx + (vX / vLen) * R_off, y: cy + (vY / vLen) * R_off };
@@ -244,18 +264,9 @@ function drawLDimensions(ctx, scale, offX, offY, th) {
     drawDim(dX, offY + th*scale, dX, offY + th*scale - D*scale, `D: ${D}mm`);
 }
 
-function getDXFPolyline(layer, vertices, isClosed) {
-    let dxf = ["  0", "LWPOLYLINE", "  8", layer, " 90", vertices.length.toString(), " 70", isClosed ? "1" : "0"];
-    vertices.forEach(p => { 
-        dxf.push(" 10", p.x.toFixed(4), " 20", p.y.toFixed(4)); 
-        if (Math.abs(p.bulge || 0) > 0.000001) dxf.push(" 42", (p.bulge).toFixed(8)); 
-    });
-    return dxf;
-}
-
-function computeDXFVertices(pts, radii, offset = 0) {
-    const n = pts.length, dxfCorners = [];
-    let area = 0; for (let i = 0; i < n; i++) area += pts[i].x * pts[(i + 1) % n].y - pts[(i + 1) % n].x * pts[i].y;
+function getDXFEntities(pts, radii, offset, layer, isClosed, edgeMask) {
+    const n = pts.length; let area = 0;
+    for (let i = 0; i < n; i++) area += pts[i].x * pts[(i + 1) % n].y - pts[(i + 1) % n].x * pts[i].y;
     const CW = area > 0 ? 1 : -1, edges = [];
     for (let i = 0; i < n; i++) {
         const p1 = pts[i], p2 = pts[(i + 1) % n];
@@ -263,17 +274,47 @@ function computeDXFVertices(pts, radii, offset = 0) {
         let nx = vy * CW, ny = -vx * CW;
         edges.push({ vx, vy, nx, ny, offL: { x1: p1.x + nx * offset, y1: p1.y + ny * offset, x2: p2.x + nx * offset, y2: p2.y + ny * offset } });
     }
+    let corners = [];
     for (let i = 0; i < n; i++) {
-        const ePrev = edges[(i + n - 1) % n], eNext = edges[i], C_off = intersectLines(ePrev.offL, eNext.offL), r = radii[i];
+        const ePrev = edges[(i + n - 1) % n], eNext = edges[i];
+        const C_off = intersectLines(ePrev.offL, eNext.offL), r = radii[i];
         let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy, alpha = Math.atan2(cross, dot), isConvex = (cross * CW) > 0, R_off = isConvex ? r + offset : r - offset;
         R_off = Math.max(0, R_off); if (r === 0) R_off = 0;
+        let arcStart = C_off, arcEnd = C_off, d = 0;
         if (R_off > 0) {
-            let d = R_off * Math.abs(Math.tan(alpha / 2)), bulge = Math.tan(alpha / 4);
-            if (!isConvex) bulge = -bulge;
-            dxfCorners.push({ start: { x: C_off.x - ePrev.vx * d, y: C_off.y - ePrev.vy * d, bulge: bulge }, end: { x: C_off.x + eNext.vx * d, y: C_off.y + eNext.vy * d, bulge: 0 } });
-        } else { dxfCorners.push({ start: { x: C_off.x, y: C_off.y, bulge: 0 }, end: { x: C_off.x, y: C_off.y, bulge: 0 } }); }
+            d = R_off * Math.abs(Math.tan(alpha / 2));
+            arcStart = { x: C_off.x - ePrev.vx * d, y: C_off.y - ePrev.vy * d };
+            arcEnd = { x: C_off.x + eNext.vx * d, y: C_off.y + eNext.vy * d };
+        }
+        corners.push({ C_off, R_off, arcStart, arcEnd, cross });
     }
-    return dxfCorners;
+    let dxf = [];
+    const pushLine = (p1, p2) => {
+        if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.0001) return;
+        dxf.push("  0", "LINE", "  8", layer, " 10", p1.x.toFixed(4), " 20", p1.y.toFixed(4), " 11", p2.x.toFixed(4), " 21", p2.y.toFixed(4));
+    };
+    const pushArc = (cIdx) => {
+        let corner = corners[cIdx];
+        if (corner.R_off <= 0.0001) return;
+        let p1 = corner.arcStart, p2 = corner.arcEnd;
+        let ePrev = edges[(cIdx + n - 1) % n], n1 = { x1: p1.x, y1: p1.y, x2: p1.x - ePrev.vy, y2: p1.y + ePrev.vx };
+        let eNext = edges[cIdx], n2 = { x1: p2.x, y1: p2.y, x2: p2.x - eNext.vy, y2: p2.y + eNext.vx };
+        let center = intersectLines(n1, n2);
+        let startAng = Math.atan2(p1.y - center.y, p1.x - center.x) * 180 / Math.PI, endAng = Math.atan2(p2.y - center.y, p2.x - center.x) * 180 / Math.PI;
+        if (startAng < 0) startAng += 360; if (endAng < 0) endAng += 360;
+        let a1 = startAng, a2 = endAng;
+        if (corner.cross < 0) { a1 = endAng; a2 = startAng; }
+        dxf.push("  0", "ARC", "  8", layer, " 10", center.x.toFixed(4), " 20", center.y.toFixed(4), " 40", corner.R_off.toFixed(4), " 50", a1.toFixed(4), " 51", a2.toFixed(4));
+    };
+    if (isClosed) {
+        for (let i = 0; i < n; i++) { pushLine(corners[i].arcEnd, corners[(i + 1) % n].arcStart); pushArc((i + 1) % n); }
+    } else {
+        for (let i = 0; i < edgeMask.length; i++) {
+            let edgeIdx = edgeMask[i]; pushLine(corners[edgeIdx].arcEnd, corners[(edgeIdx + 1) % n].arcStart);
+            if (i < edgeMask.length - 1) pushArc((edgeIdx + 1) % n);
+        }
+    }
+    return dxf;
 }
 
 function downloadPNG() {
@@ -287,29 +328,21 @@ function downloadPNG() {
 
 function downloadDXF() {
     const rawPts = getPoints(), radii = getRadii(), maxY = Math.max(...rawPts.map(p => p[1])), pts = rawPts.map(p => ({ x: p[0], y: maxY - p[1] })), n = pts.length;
-    const baseCorners = computeDXFVertices(pts, radii, 0), bandCorners = computeDXFVertices(pts, radii, 12);
-    let shapePts = [];
-    baseCorners.forEach(c => { shapePts.push(c.start); if (c.start.x !== c.end.x || c.start.y !== c.end.y) shapePts.push(c.end); });
-    let dxf = ["  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1015", "  0", "ENDSEC", "  0", "SECTION", "  2", "TABLES", "  0", "TABLE", "  2", "LAYER", " 70", "2", "  0", "LAYER", "  2", "Shape", " 70", "0", " 62", "7", "  0", "LAYER", "  2", "Edge_Banding", " 70", "0", " 62", "1", "  0", "ENDTAB", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES"];
-    dxf = dxf.concat(getDXFPolyline("Shape", shapePts, true));
+    let dxf = ["  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC", "  0", "SECTION", "  2", "TABLES", "  0", "TABLE", "  2", "LAYER", " 70", "2", "  0", "LAYER", "  2", "Shape", " 70", "0", " 62", "7", "  0", "LAYER", "  2", "Edge_Banding", " 70", "0", " 62", "1", "  0", "ENDTAB", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES"];
+    
+    dxf = dxf.concat(getDXFEntities(pts, radii, 0, "Shape", true, null));
+    
     currentSections.forEach((sec, sIdx) => {
         const cb = document.getElementById(`bandSec${sIdx}`);
         if (cb && cb.checked) {
             if (sec.length === n) { 
-                let bPts = []; bandCorners.forEach(c => { bPts.push(c.start); if (c.start.x !== c.end.x || c.start.y !== c.end.y) bPts.push(c.end); });
-                dxf = dxf.concat(getDXFPolyline("Edge_Banding", bPts, true)); 
+                dxf = dxf.concat(getDXFEntities(pts, radii, 12, "Edge_Banding", true, null)); 
             } else {
-                let secPts = [], firstEdge = sec[0], prevCorner = (firstEdge + n - 1) % n;
-                secPts.push(bandCorners[prevCorner].end);
-                for (let i = 0; i < sec.length; i++) {
-                    let nextCorner = (sec[i] + 1) % n, c = bandCorners[nextCorner];
-                    secPts.push(c.start);
-                    if (i < sec.length - 1 && (c.start.x !== c.end.x || c.start.y !== c.end.y)) secPts.push(c.end);
-                }
-                dxf = dxf.concat(getDXFPolyline("Edge_Banding", secPts, false));
+                dxf = dxf.concat(getDXFEntities(pts, radii, 12, "Edge_Banding", false, sec));
             }
         }
     });
+    
     dxf.push("  0", "ENDSEC", "  0", "EOF");
     const blob = new Blob([dxf.join("\r\n")], { type: "application/dxf" });
     const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = (document.getElementById("fileName").value || "l_shape") + ".dxf"; link.click();
