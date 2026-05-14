@@ -101,8 +101,17 @@ function validateRadii() {
             let d1 = r1 * alphas[i], d2 = r2 * alphas[(i + 1) % n];
             let len = edges[i].len;
             if (d1 + d2 > len + 0.001) {
-                let factor = len / (d1 + d2 + 0.0001);
-                radii[i] *= factor; radii[(i + 1) % n] *= factor;
+                let excess = (d1 + d2) - len;
+                let flex1 = d1 - (minR1 * alphas[i]), flex2 = d2 - (minR2 * alphas[(i + 1) % n]);
+                if (flex1 < 0) flex1 = 0; if (flex2 < 0) flex2 = 0;
+                
+                if (flex1 + flex2 > 0) {
+                    let f1 = flex1 / (flex1 + flex2), f2 = flex2 / (flex1 + flex2);
+                    d1 -= excess * f1; d2 -= excess * f2;
+                } else {
+                    d1 = minR1 * alphas[i]; d2 = minR2 * alphas[(i + 1) % n];
+                }
+                radii[i] = d1 / (alphas[i] || 1); radii[(i + 1) % n] = d2 / (alphas[(i + 1) % n] || 1);
                 clamped = true; changed = true;
             }
         }
@@ -198,19 +207,25 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         let arcStart = { x: rc.C_off.x - ePrev.vx * rc.d, y: rc.C_off.y - ePrev.vy * rc.d };
         let arcEnd = { x: rc.C_off.x + eNext.vx * rc.d, y: rc.C_off.y + eNext.vy * rc.d };
         let arcMid = { x: rc.C_off.x, y: rc.C_off.y }, arcCenter = { x: rc.C_off.x, y: rc.C_off.y };
-        let dxfStart = 0, dxfEnd = 0;
+        let dxfStart = 0, dxfEnd = 0, drawCCW = true;
 
         if (rc.R_off > 0) {
-            let turnSign = Math.sign(rc.cross) || 1;
-            let nx = -ePrev.vy * turnSign, ny = ePrev.vx * turnSign;
-            arcCenter = { x: arcStart.x + nx * rc.R_off, y: arcStart.y + ny * rc.R_off };
+            let outNx = ePrev.vy * CW, outNy = -ePrev.vx * CW;
+            let inNx = -outNx, inNy = -outNy;
+
+            if (rc.isConvex) {
+                arcCenter = { x: arcStart.x + inNx * rc.R_off, y: arcStart.y + inNy * rc.R_off };
+            } else {
+                arcCenter = { x: arcStart.x - inNx * rc.R_off, y: arcStart.y - inNy * rc.R_off };
+            }
 
             let aStart = Math.atan2(arcStart.y - arcCenter.y, arcStart.x - arcCenter.x) * 180 / Math.PI;
             let aEnd   = Math.atan2(arcEnd.y - arcCenter.y, arcEnd.x - arcCenter.x) * 180 / Math.PI;
-            if (aStart < 0) aStart += 360;
-            if (aEnd < 0) aEnd += 360;
+            if (aStart < 0) aStart += 360; if (aEnd < 0) aEnd += 360;
 
-            if (turnSign > 0) {
+            drawCCW = (CW === 1 && rc.isConvex) || (CW === -1 && !rc.isConvex);
+            
+            if (drawCCW) {
                 dxfStart = aStart; dxfEnd = aEnd;
             } else {
                 dxfStart = aEnd; dxfEnd = aStart;
@@ -222,7 +237,7 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
                 y: arcCenter.y + rc.R_off * Math.sin(aMidCCW * Math.PI / 180)
             };
         }
-        corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, arcCenter, dxfStart, dxfEnd, cross: rc.cross });
+        corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, arcCenter, dxfStart, dxfEnd, drawCCW });
     }
     return corners;
 }
@@ -237,16 +252,16 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
         let cx = parseFloat(c.arcCenter.x.toFixed(8));
         let cy = parseFloat(c.arcCenter.y.toFixed(8));
         let r  = parseFloat(c.R_off.toFixed(8));
-        let aStart = parseFloat(c.dxfStart.toFixed(8)) * Math.PI / 180;
-        let aEnd = parseFloat(c.dxfEnd.toFixed(8)) * Math.PI / 180;
+        let a1 = parseFloat(c.dxfStart.toFixed(8)) * Math.PI / 180;
+        let a2 = parseFloat(c.dxfEnd.toFixed(8)) * Math.PI / 180;
 
-        let ptStart = { x: cx + r * Math.cos(aStart), y: cy + r * Math.sin(aStart) };
-        let ptEnd = { x: cx + r * Math.cos(aEnd), y: cy + r * Math.sin(aEnd) };
+        let pt1 = { x: cx + r * Math.cos(a1), y: cy + r * Math.sin(a1) };
+        let pt2 = { x: cx + r * Math.cos(a2), y: cy + r * Math.sin(a2) };
 
-        if (c.cross > 0) {
-            return { enter: ptStart, exit: ptEnd };
+        if (c.drawCCW) {
+            return { enter: pt1, exit: pt2 };
         } else {
-            return { enter: ptEnd, exit: ptStart };
+            return { enter: pt2, exit: pt1 };
         }
     }
 
@@ -269,8 +284,12 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
     } else {
         for (let i = 0; i < sec.length; i++) {
             let edgeIdx = sec[i], c1 = corners[edgeIdx], c2 = corners[(edgeIdx + 1) % n];
-            pushLine(getExactPoints(c1).exit, getExactPoints(c2).enter);
-            if (i < sec.length - 1) pushArc(c2);
+            if (i === 0) pushLine(getExactPoints(c1).exit, getExactPoints(c2).enter);
+            if (i < sec.length - 1) {
+                pushArc(c2);
+                let c3 = corners[(edgeIdx + 2) % n];
+                pushLine(getExactPoints(c2).exit, getExactPoints(c3).enter);
+            }
         }
     }
     return dxf;
@@ -315,19 +334,20 @@ function drawTriangle(targetCanvas = null) {
     const pts = getPoints(), radii = getRadii(), xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), shapeW = Math.max(...xs) - Math.min(...xs), shapeH = Math.max(...ys) - Math.min(...ys);
     const margin = Math.min(canvas.width, canvas.height) * 0.15, scale = Math.min((canvas.width - margin * 2) / (shapeW || 1), (canvas.height - margin * 2) / (shapeH || 1)), offX = (canvas.width - shapeW * scale) / 2 - Math.min(...xs) * scale, offY = (canvas.height - shapeH * scale) / 2 - Math.min(...ys) * scale, n = pts.length;
     
-    const crns = generatePathData(pts, 0, radii, scale, offX, offY);
+    let screenPts = pts.map(p => [p[0], shapeH - p[1]]);
+    const crns = generatePathData(screenPts, 0, radii, scale, offX, offY);
 
     ctx.beginPath(); ctx.moveTo(crns[0].arcStart.x, crns[0].arcStart.y);
     for (let i = 0; i < n; i++) {
         let c = crns[i];
-        if (c.R_off > 0) ctx.arcTo(c.arcCenter.x, c.arcCenter.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
+        if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
         ctx.lineTo(crns[(i + 1) % n].arcStart.x, crns[(i + 1) % n].arcStart.y);
     }
     ctx.closePath(); ctx.lineWidth = Math.max(2, 3 * (canvas.width / 1200)); ctx.strokeStyle = "#000"; ctx.stroke();
 
     const bandingControls = document.getElementById("dynamic-banding-controls");
     if (bandingControls && bandingControls.children.length > 0) {
-        const bCrns = generatePathData(pts, 12 * (canvas.width / 1200) / scale, radii, scale, offX, offY);
+        const bCrns = generatePathData(screenPts, 12 * (canvas.width / 1200) / scale, radii, scale, offX, offY);
         currentSections.forEach((sec, sIdx) => {
             const cb = document.getElementById(`bandSec${sIdx}`);
             if (cb && cb.checked) {
@@ -336,7 +356,7 @@ function drawTriangle(targetCanvas = null) {
                     ctx.moveTo(bCrns[0].arcStart.x, bCrns[0].arcStart.y);
                     for (let i = 0; i < n; i++) {
                         let c = bCrns[i];
-                        if (c.R_off > 0) ctx.arcTo(c.arcCenter.x, c.arcCenter.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
+                        if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
                         ctx.lineTo(bCrns[(i + 1) % n].arcStart.x, bCrns[(i + 1) % n].arcStart.y);
                     }
                     ctx.closePath();
@@ -345,14 +365,14 @@ function drawTriangle(targetCanvas = null) {
                     sec.forEach((edgeIdx, idx) => {
                         let c = bCrns[(edgeIdx + 1) % n];
                         ctx.lineTo(c.arcStart.x, c.arcStart.y);
-                        if (idx < sec.length - 1) { if (c.R_off > 0) ctx.arcTo(c.arcCenter.x, c.arcCenter.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y); }
+                        if (idx < sec.length - 1) { if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y); }
                     });
                 }
                 ctx.stroke();
             }
         });
     }
-    drawDimensions(ctx, pts, scale, offX, offY);
+    drawDimensions(ctx, screenPts, scale, offX, offY);
     if (highlightedCorner !== -1 && !targetCanvas) {
         const cp = crns[highlightedCorner]; ctx.beginPath(); ctx.arc(cp.arcMid.x, cp.arcMid.y, 20, 0, Math.PI * 2); ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
     }
@@ -386,7 +406,7 @@ function downloadPNG() {
 }
 
 function downloadDXF() {
-    const rawPts = getPoints(), radii = getRadii(), maxY = Math.max(...rawPts.map(p => p[1])), pts = rawPts.map(p => [p[0], maxY - p[1]]), n = pts.length;
+    const pts = getPoints(), radii = getRadii(), n = pts.length;
     let dxf = [
         "  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC",
         "  0", "SECTION", "  2", "TABLES",
