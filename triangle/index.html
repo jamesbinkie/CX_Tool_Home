@@ -25,7 +25,7 @@
   <h2>Triangle Generator (mm)</h2>
   <div id="safetyWarning" class="warning-box">⚠️ Corner angle is less than 30°: Too tight for edge banding!</div>
   <div id="sheetWarning" class="warning-box">⚠️ Part exceeds maximum sheet size (2400 x 1200 mm).</div>
-  <div id="radiusWarning" class="warning-box">⚠️ Radii updated! Ensure banded corners have at least 50mm radius.</div>
+  <div id="radiusWarning" class="warning-box">⚠️ Radii adjusted! Ensure banded corners have at least 50mm radius and do not overlap.</div>
 
   <div class="main-layout">
     <div class="left-col">
@@ -65,9 +65,9 @@
         <h3>Corner Radii</h3>
         <p style="font-size: 11px; color: #b5bac1; margin-top: -5px; margin-bottom: 12px;">Min 50mm if banding flows through.</p>
         <div class="corner-grid">
-            <div class="corner-input-wrap" data-corner="0"><label>Corner 1 (Top)</label><input type="number" id="rad0" value="0" min="0"></div>
+            <div class="corner-input-wrap" data-corner="0"><label>Corner 1 (Btm L)</label><input type="number" id="rad0" value="0" min="0"></div>
             <div class="corner-input-wrap" data-corner="1"><label>Corner 2 (Btm R)</label><input type="number" id="rad1" value="0" min="0"></div>
-            <div class="corner-input-wrap" data-corner="2"><label>Corner 3 (Btm L)</label><input type="number" id="rad2" value="0" min="0"></div>
+            <div class="corner-input-wrap" data-corner="2"><label>Corner 3 (Top)</label><input type="number" id="rad2" value="0" min="0"></div>
         </div>
       </div>
 
