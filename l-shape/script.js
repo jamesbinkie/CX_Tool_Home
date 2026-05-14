@@ -339,7 +339,7 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     return corners;
 }
 
-// DXF entities for banding (still ARC/LINE)
+// DXF entities for banding (ARC/LINE)
 function getDXFEntities(corners, layer, isClosed, sec = null) {
     let dxf = [];
     const n = corners.length;
@@ -425,7 +425,7 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
     return dxf;
 }
 
-// Build a single closed LWPOLYLINE (Shape) with bulges
+// Single closed LWPOLYLINE (Shape) with bulges
 function buildShapePolyline(corners) {
     const n = corners.length;
     let verts = [];
@@ -433,7 +433,6 @@ function buildShapePolyline(corners) {
     for (let i = 0; i < n; i++) {
         const c = corners[i];
 
-        // First vertex
         if (i === 0) {
             if (c.R_off > 0) {
                 verts.push({ x: c.arcStart.x, y: c.arcStart.y, bulge: 0 });
@@ -442,8 +441,10 @@ function buildShapePolyline(corners) {
             }
         }
 
-        // Arc at this corner (if any)
         if (c.R_off > 0) {
+            // straight into arcStart
+            verts.push({ x: c.arcStart.x, y: c.arcStart.y, bulge: 0 });
+
             const cx = c.arcCenter.x;
             const cy = c.arcCenter.y;
 
@@ -454,21 +455,18 @@ function buildShapePolyline(corners) {
             while (delta <= -Math.PI) delta += 2 * Math.PI;
             while (delta >  Math.PI)  delta -= 2 * Math.PI;
 
+            if (!c.isConvex) delta = -delta;
+
             const bulge = Math.tan(delta / 4);
 
             verts.push({ x: c.arcEnd.x, y: c.arcEnd.y, bulge });
         }
 
-        // Straight to next corner's start
         const next = corners[(i + 1) % n];
-        let nextStart;
-        if (next.R_off > 0) nextStart = next.arcStart;
-        else nextStart = next.C_off;
-
+        const nextStart = next.R_off > 0 ? next.arcStart : next.C_off;
         verts.push({ x: nextStart.x, y: nextStart.y, bulge: 0 });
     }
 
-    // Remove duplicate last vertex if it matches first
     if (verts.length > 1) {
         const f = verts[0];
         const l = verts[verts.length - 1];
@@ -616,7 +614,7 @@ function drawLShape(targetCanvas = null) {
                         let c = bCrns[(edgeIdx + 1) % n];
                         ctx.lineTo(c.arcStart.x, c.arcStart.y);
                         if (idx < sec.length - 1) {
-                            if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
+                            if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.R_off);
                             else ctx.lineTo(c.C_off.x, c.C_off.y);
                         }
                     });
@@ -715,11 +713,9 @@ function downloadDXF() {
     const radii = getRadii();
     const n = pts.length;
 
-    // Geometry for DXF is in real mm coordinates (no flip, no scale)
     const shapeCorners = generatePathData(pts, 0, radii, 1, 0, 0);
     const bandCorners  = generatePathData(pts, 12, radii, 1, 0, 0);
 
-    // Build single closed LWPOLYLINE for Shape
     const polyVerts = buildShapePolyline(shapeCorners);
 
     let dxf = [
@@ -767,13 +763,12 @@ function downloadDXF() {
         "  2", "ENTITIES"
     ];
 
-    // Single closed LWPOLYLINE for Shape
     dxf.push(
         "  0", "LWPOLYLINE",
         "  8", "Shape",
         " 90", polyVerts.length.toString(),
-        " 70", "1",          // closed
-        " 43", "0.0"         // constant width
+        " 70", "1",
+        " 43", "0.0"
     );
 
     polyVerts.forEach(v => {
@@ -784,7 +779,6 @@ function downloadDXF() {
         );
     });
 
-    // Edge banding as separate ARC/LINE entities
     currentSections.forEach((sec, sIdx) => {
         const cb = document.getElementById(`bandSec${sIdx}`);
         if (cb && cb.checked) {
