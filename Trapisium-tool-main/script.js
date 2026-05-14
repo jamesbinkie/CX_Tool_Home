@@ -24,7 +24,7 @@ window.onload = () => {
         wrap.addEventListener('mouseenter', () => { highlightedCorner = parseInt(wrap.dataset.corner); drawTrapezium(); });
         wrap.addEventListener('mouseleave', () => { highlightedCorner = -1; drawTrapezium(); });
     });
-    window.addEventListener("resize", drawTrapezium); // Native auto-resizing
+    window.addEventListener("resize", drawTrapezium);
     refreshMaxLabels(); updateUI();
 };
 
@@ -113,10 +113,10 @@ function updateBandingUI(radii) {
         currentSections.forEach((sec, sIdx) => { const cb = document.getElementById(`bandSec${sIdx}`); let isChecked = cb ? cb.checked : true; sec.forEach(edge => oldEdgeBanded[edge] = isChecked); });
     }
     currentSections = sections;
-    let html = `<label style="display: flex; align-items: center; gap: 5px; font-weight: bold;"><input type="checkbox" id="bandAll" checked> Band All</label>`;
+    let html = `<label style="display: flex; align-items: center; gap: 5px; font-weight: bold; margin-bottom: 5px;"><input type="checkbox" id="bandAll" checked> Band All</label>`;
     sections.forEach((sec, idx) => {
         let color = bandingColors[idx % bandingColors.length], names = sec.map(e => edgeNames[e]).join(" + "), shouldCheck = sec.some(edge => oldEdgeBanded[edge]);
-        html += `<label style="display: flex; align-items: center; gap: 5px; border-bottom: 3px solid ${color}; padding-bottom: 2px;"><input type="checkbox" class="band-sec" id="bandSec${idx}" ${shouldCheck ? "checked" : ""}> ${names}</label>`;
+        html += `<label style="display: flex; align-items: center; gap: 5px; border-left: 4px solid ${color}; padding-left: 8px;"><input type="checkbox" class="band-sec" id="bandSec${idx}" ${shouldCheck ? "checked" : ""}> ${names}</label>`;
     });
     container.innerHTML = html;
     const allCb = document.getElementById("bandAll"), secCbs = document.querySelectorAll(".band-sec");
@@ -130,8 +130,8 @@ function drawTrapezium(targetCanvas = null) {
     if (!targetCanvas) {
         const rect = canvas.getBoundingClientRect();
         if (canvas.width !== rect.width || canvas.height !== rect.height) { canvas.width = rect.width; canvas.height = rect.height; }
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
     const pts = getPoints(), radii = getRadii(), xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), shapeW = Math.max(...xs) - Math.min(...xs), shapeH = Math.max(...ys) - Math.min(...ys);
     const margin = Math.min(canvas.width, canvas.height) * 0.15, scale = Math.min((canvas.width - margin * 2) / (shapeW || 1), (canvas.height - margin * 2) / (shapeH || 1)), offX = (canvas.width - shapeW * scale) / 2 - Math.min(...xs) * scale, offY = (canvas.height - shapeH * scale) / 2 - Math.min(...ys) * scale, n = pts.length;
     const baseData = generatePathData(pts, 0, radii, scale, offX, offY), crns = baseData.corners;
@@ -181,7 +181,7 @@ function drawDimensions(ctx, pts, scale, offsetX, offsetY) {
     const TL = pts[0], TR = pts[1], BR = pts[2], BL = pts[3];
     drawDimLine(ctx, TL[0] * scale + offsetX, TL[1] * scale + offsetY, TR[0] * scale + offsetX, TR[1] * scale + offsetY, `${Number((TR[0] - TL[0]).toFixed(2))} mm`, "above");
     drawDimLine(ctx, BL[0] * scale + offsetX, BL[1] * scale + offsetY, BR[0] * scale + offsetX, BR[1] * scale + offsetY, `${Number((BR[0] - BL[0]).toFixed(2))} mm`, "below");
-    const shapeLeft = Math.min(TL[0] * scale + offsetX, BL[0] * scale + offsetX), scaleFactor = ctx.canvas.width / 1200, dimOffset = 25 * scaleFactor, spaceLeft = shapeLeft, spaceRight = ctx.canvas.width - Math.max(TR[0] * scale + offsetX, BR[0] * scale + offsetX);
+    const shapeLeft = Math.min(TL[0] * scale + offsetX, BL[0] * scale + offsetX), scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1, dimOffset = 25 * scaleFactor, spaceLeft = shapeLeft, spaceRight = ctx.canvas.width - Math.max(TR[0] * scale + offsetX, BR[0] * scale + offsetX);
     let position = (spaceRight > spaceLeft) ? "right" : "left", dimX = (position === "right") ? Math.max(TR[0] * scale + offsetX, BR[0] * scale + offsetX) + dimOffset : shapeLeft - dimOffset;
     drawDimLine(ctx, dimX, TL[1] * scale + offsetY, dimX, BL[1] * scale + offsetY, `${Number((BL[1] - TL[1]).toFixed(2))} mm`, position);
 }
@@ -211,16 +211,25 @@ function getDXFPolyline(layer, vertices, isClosed) {
     dxf.push("  0", "SEQEND", "  8", layer); return dxf;
 }
 
-function computeDXFVertices(pts, radii) {
+function computeDXFVertices(pts, radii, offset = 0) {
     const n = pts.length, dxfCorners = [];
+    let area = 0; for (let i = 0; i < n; i++) area += pts[i].x * pts[(i + 1) % n].y - pts[(i + 1) % n].x * pts[i].y;
+    const CW = area > 0 ? 1 : -1, edges = [];
     for (let i = 0; i < n; i++) {
-        const p0 = pts[(i + n - 1) % n], p1 = pts[i], p2 = pts[(i + 1) % n], r = radii[i];
-        let v1x = p1.x - p0.x, v1y = p1.y - p0.y, l1 = Math.hypot(v1x, v1y) || 1; v1x /= l1; v1y /= l1;
-        let v2x = p2.x - p1.x, v2y = p2.y - p1.y, l2 = Math.hypot(v2x, v2y) || 1; v2x /= l2; v2y /= l2;
-        if (r > 0) {
-            let cross = v1x * v2y - v1y * v2x, dot = v1x * v2x + v1y * v2y, alpha = Math.atan2(cross, dot), d = r * Math.abs(Math.tan(alpha / 2));
-            dxfCorners.push({ start: { x: p1.x - v1x * d, y: p1.y - v1y * d, bulge: Math.tan(alpha / 4) }, end: { x: p1.x + v2x * d, y: p1.y + v2y * d, bulge: 0 } });
-        } else { dxfCorners.push({ start: { x: p1.x, y: p1.y, bulge: 0 }, end: { x: p1.x, y: p1.y, bulge: 0 } }); }
+        const p1 = pts[i], p2 = pts[(i + 1) % n];
+        let vx = p2.x - p1.x, vy = p2.y - p1.y, len = Math.hypot(vx, vy) || 1; vx /= len; vy /= len;
+        let nx = vy * CW, ny = -vx * CW;
+        edges.push({ vx, vy, nx, ny, offL: { x1: p1.x + nx * offset, y1: p1.y + ny * offset, x2: p2.x + nx * offset, y2: p2.y + ny * offset } });
+    }
+    for (let i = 0; i < n; i++) {
+        const ePrev = edges[(i + n - 1) % n], eNext = edges[i], C_off = intersectLines(ePrev.offL, eNext.offL), r = radii[i];
+        let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy, alpha = Math.atan2(cross, dot), isConvex = (cross * CW) > 0, R_off = isConvex ? r + offset : r - offset;
+        R_off = Math.max(0, R_off); if (r === 0) R_off = 0;
+        if (R_off > 0) {
+            let d = R_off * Math.abs(Math.tan(alpha / 2)), bulge = Math.tan(alpha / 4);
+            if (!isConvex) bulge = -bulge;
+            dxfCorners.push({ start: { x: C_off.x - ePrev.vx * d, y: C_off.y - ePrev.vy * d, bulge: bulge }, end: { x: C_off.x + eNext.vx * d, y: C_off.y + eNext.vy * d, bulge: 0 } });
+        } else { dxfCorners.push({ start: { x: C_off.x, y: C_off.y, bulge: 0 }, end: { x: C_off.x, y: C_off.y, bulge: 0 } }); }
     }
     return dxfCorners;
 }
@@ -235,20 +244,23 @@ function downloadPNG() {
 }
 
 function downloadDXF() {
-    const rawPts = getPoints(), radii = getRadii(), maxY = Math.max(...rawPts.map(p => p[1])), pts = rawPts.map(p => ({ x: p[0], y: maxY - p[1] })), dxfCorners = computeDXFVertices(pts, radii), n = pts.length;
+    const rawPts = getPoints(), radii = getRadii(), maxY = Math.max(...rawPts.map(p => p[1])), pts = rawPts.map(p => ({ x: p[0], y: maxY - p[1] })), n = pts.length;
+    const baseCorners = computeDXFVertices(pts, radii, 0), bandCorners = computeDXFVertices(pts, radii, 12);
     let shapePts = [];
-    dxfCorners.forEach(c => { shapePts.push(c.start); if (c.start.x !== c.end.x || c.start.y !== c.end.y) shapePts.push(c.end); });
+    baseCorners.forEach(c => { shapePts.push(c.start); if (c.start.x !== c.end.x || c.start.y !== c.end.y) shapePts.push(c.end); });
     let dxf = ["  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC", "  0", "SECTION", "  2", "TABLES", "  0", "TABLE", "  2", "LAYER", " 70", "2", "  0", "LAYER", "  2", "Shape", " 70", "0", " 62", "7", "  0", "LAYER", "  2", "Edge_Banding", " 70", "0", " 62", "1", "  0", "ENDTAB", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES"];
     dxf = dxf.concat(getDXFPolyline("Shape", shapePts, true));
     currentSections.forEach((sec, sIdx) => {
         const cb = document.getElementById(`bandSec${sIdx}`);
         if (cb && cb.checked) {
-            if (sec.length === n) { dxf = dxf.concat(getDXFPolyline("Edge_Banding", shapePts, true)); } 
-            else {
-                let secPts = [], firstEdge = sec[0];
-                secPts.push(dxfCorners[firstEdge].end);
+            if (sec.length === n) { 
+                let bPts = []; bandCorners.forEach(c => { bPts.push(c.start); if (c.start.x !== c.end.x || c.start.y !== c.end.y) bPts.push(c.end); });
+                dxf = dxf.concat(getDXFPolyline("Edge_Banding", bPts, true)); 
+            } else {
+                let secPts = [], firstEdge = sec[0], prevCorner = (firstEdge + n - 1) % n;
+                secPts.push(bandCorners[prevCorner].end);
                 for (let i = 0; i < sec.length; i++) {
-                    let nextCorner = (sec[i] + 1) % n, c = dxfCorners[nextCorner];
+                    let nextCorner = (sec[i] + 1) % n, c = bandCorners[nextCorner];
                     secPts.push(c.start);
                     if (i < sec.length - 1 && (c.start.x !== c.end.x || c.start.y !== c.end.y)) secPts.push(c.end);
                 }
