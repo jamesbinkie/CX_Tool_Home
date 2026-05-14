@@ -339,7 +339,7 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     return corners;
 }
 
-// --- DXF helpers for POLYLINE with bulge arcs ---
+// --- DXF helpers: exact arc endpoints and entities (LINE + ARC) ---
 
 function getExactPoints(c) {
     if (c.R_off <= 0.001) {
@@ -362,92 +362,9 @@ function getExactPoints(c) {
     }
 }
 
-function getBulge(c) {
-    if (c.R_off <= 0.001) return 0;
-
-    let sweepRad;
-    if (c.drawCCW) {
-        let sweepDeg = (c.dxfEnd - c.dxfStart + 360) % 360;
-        sweepRad = sweepDeg * Math.PI / 180;
-        return Math.tan(sweepRad / 4);
-    } else {
-        let sweepDeg = (c.dxfStart - c.dxfEnd + 360) % 360;
-        sweepRad = sweepDeg * Math.PI / 180;
-        return -Math.tan(sweepRad / 4);
-    }
-}
-
-function getDXFPolyline(corners, layer, isClosed) {
+function getDXFEntities(corners, layer, isClosed, sec = null) {
     let dxf = [];
     const n = corners.length;
-    const exact = corners.map(c => getExactPoints(c));
-
-    let vertices = [];
-
-    for (let i = 0; i < n; i++) {
-        const c = corners[i];
-        const ex = exact[i];
-
-        if (c.R_off > 0.001) {
-            let enter = ex.enter;
-            let exit = ex.exit;
-            let bulge = getBulge(c);
-
-            // concave corner: swap enter/exit and flip bulge so it still bulges outward
-            if (!c.isConvex) {
-                const tmp = enter;
-                enter = exit;
-                exit = tmp;
-                bulge = -bulge;
-            }
-
-            if (vertices.length === 0 || Math.hypot(vertices[vertices.length - 1].x - enter.x, vertices[vertices.length - 1].y - enter.y) > 1e-6) {
-                vertices.push({ x: enter.x, y: enter.y, bulge });
-            } else {
-                vertices[vertices.length - 1].bulge = bulge;
-            }
-
-            vertices.push({ x: exit.x, y: exit.y, bulge: 0 });
-        } else {
-            const p = ex.enter;
-            if (vertices.length === 0 || Math.hypot(vertices[vertices.length - 1].x - p.x, vertices[vertices.length - 1].y - p.y) > 1e-6) {
-                vertices.push({ x: p.x, y: p.y, bulge: 0 });
-            }
-        }
-    }
-
-    dxf.push(
-        "  0", "POLYLINE",
-        "  8", layer,
-        " 66", "1",
-        " 70", isClosed ? "1" : "0",
-        " 10", "0.0",
-        " 20", "0.0",
-        " 30", "0.0"
-    );
-
-    vertices.forEach(v => {
-        dxf.push(
-            "  0", "VERTEX",
-            "  8", layer,
-            " 10", v.x.toFixed(8),
-            " 20", v.y.toFixed(8),
-            " 30", "0.0"
-        );
-        if (Math.abs(v.bulge) > 1e-9) {
-            dxf.push(" 42", v.bulge.toFixed(8));
-        }
-    });
-
-    dxf.push("  0", "SEQEND", "  8", layer);
-
-    return dxf;
-}
-
-function getDXFEntitiesOpenBand(corners, layer, sec) {
-    let dxf = [];
-    const n = corners.length;
-    const exact = corners.map(c => getExactPoints(c));
 
     const pushLine = (p1, p2) => {
         if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.001) return;
@@ -474,22 +391,39 @@ function getDXFEntitiesOpenBand(corners, layer, sec) {
         );
     };
 
-    for (let i = 0; i < sec.length; i++) {
-        let edgeIdx = sec[i];
-        let c1 = corners[edgeIdx];
-        let c2 = corners[(edgeIdx + 1) % n];
+    if (isClosed) {
+        for (let i = 0; i < n; i++) {
+            let c1 = corners[i];
+            let c2 = corners[(i + 1) % n];
+            const p1 = getExactPoints(c1);
+            const p2 = getExactPoints(c2);
 
-        if (i === 0) {
-            pushLine(exact[edgeIdx].exit, exact[(edgeIdx + 1) % n].enter);
+            pushArc(c1);
+            pushLine(p1.exit, p2.enter);
         }
+    } else {
+        for (let i = 0; i < sec.length; i++) {
+            let edgeIdx = sec[i];
+            let c1 = corners[edgeIdx];
+            let c2 = corners[(edgeIdx + 1) % n];
 
-        if (i < sec.length - 1) {
-            let cornerIdx = (edgeIdx + 1) % n;
-            pushArc(corners[cornerIdx]);
+            const p1 = getExactPoints(c1);
+            const p2 = getExactPoints(c2);
 
-            let nextEdgeIdx = sec[i + 1];
-            let nextCornerIdx = (nextEdgeIdx + 1) % n;
-            pushLine(exact[cornerIdx].exit, exact[nextCornerIdx].enter);
+            if (i === 0) {
+                pushLine(p1.exit, p2.enter);
+            }
+
+            if (i < sec.length - 1) {
+                let cornerIdx = (edgeIdx + 1) % n;
+                pushArc(corners[cornerIdx]);
+
+                let nextEdgeIdx = sec[i + 1];
+                let nextCornerIdx = (nextEdgeIdx + 1) % n;
+                const pMid = getExactPoints(corners[cornerIdx]);
+                const pNext = getExactPoints(corners[nextCornerIdx]);
+                pushLine(pMid.exit, pNext.enter);
+            }
         }
     }
 
@@ -634,7 +568,7 @@ function drawLShape(targetCanvas = null) {
                         let c = bCrns[(edgeIdx + 1) % n];
                         ctx.lineTo(c.arcStart.x, c.arcStart.y);
                         if (idx < sec.length - 1) {
-                            if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.R_off);
+                            if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
                             else ctx.lineTo(c.C_off.x, c.C_off.y);
                         }
                     });
@@ -772,16 +706,16 @@ function downloadDXF() {
     ];
 
     const baseCorners = generatePathData(pts, 0, radii);
-    dxf = dxf.concat(getDXFPolyline(baseCorners, "Shape", true));
+    dxf = dxf.concat(getDXFEntities(baseCorners, "Shape", true, null));
 
     const bandCorners = generatePathData(pts, 12, radii);
     currentSections.forEach((sec, sIdx) => {
         const cb = document.getElementById(`bandSec${sIdx}`);
         if (cb && cb.checked) {
             if (sec.length === n) {
-                dxf = dxf.concat(getDXFPolyline(bandCorners, "Edge_Banding", true));
+                dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", true, null));
             } else {
-                dxf = dxf.concat(getDXFEntitiesOpenBand(bandCorners, "Edge_Banding", sec));
+                dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", false, sec));
             }
         }
     });
