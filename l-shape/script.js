@@ -217,7 +217,7 @@ function getDXFPolyline(layer, vertices, isClosed) {
 }
 
 function computeDXFVertices(pts, radii) {
-    const n = pts.length, dxfPts = [];
+    const n = pts.length, dxfCorners = [];
     let area = 0; for (let i = 0; i < n; i++) area += pts[i].x * pts[(i + 1) % n].y - pts[(i + 1) % n].x * pts[i].y;
     const CW = area > 0 ? 1 : -1;
     for (let i = 0; i < n; i++) {
@@ -226,11 +226,10 @@ function computeDXFVertices(pts, radii) {
         let v2x = p2.x - p1.x, v2y = p2.y - p1.y, l2 = Math.hypot(v2x, v2y) || 1; v2x /= l2; v2y /= l2;
         if (r > 0) {
             let cross = v1x * v2y - v1y * v2x, dot = v1x * v2x + v1y * v2y, alpha = Math.atan2(cross, dot), d = r * Math.abs(Math.tan(alpha / 2));
-            dxfPts.push({ x: p1.x - v1x * d, y: p1.y - v1y * d, bulge: Math.tan(alpha / 4) });
-            dxfPts.push({ x: p1.x + v2x * d, y: p1.y + v2y * d, bulge: 0 });
-        } else { dxfPts.push({ x: p1.x, y: p1.y, bulge: 0 }); }
+            dxfCorners.push({ start: { x: p1.x - v1x * d, y: p1.y - v1y * d, bulge: Math.tan(alpha / 4) }, end: { x: p1.x + v2x * d, y: p1.y + v2y * d, bulge: 0 } });
+        } else { dxfCorners.push({ start: { x: p1.x, y: p1.y, bulge: 0 }, end: { x: p1.x, y: p1.y, bulge: 0 } }); }
     }
-    return dxfPts;
+    return dxfCorners;
 }
 
 function downloadPNG() {
@@ -243,19 +242,22 @@ function downloadPNG() {
 }
 
 function downloadDXF() {
-    const rawPts = getPoints(), radii = getRadii(), pts = rawPts.map(p => ({ x: p[0], y: p[1] })), dxfPts = computeDXFVertices(pts, radii), n = pts.length;
+    const rawPts = getPoints(), radii = getRadii(), pts = rawPts.map(p => ({ x: p[0], y: p[1] })), dxfCorners = computeDXFVertices(pts, radii), n = pts.length;
+    let shapePts = [];
+    dxfCorners.forEach(c => { shapePts.push(c.start); if (c.start.x !== c.end.x || c.start.y !== c.end.y) shapePts.push(c.end); });
     let dxf = ["  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC", "  0", "SECTION", "  2", "TABLES", "  0", "TABLE", "  2", "LAYER", " 70", "2", "  0", "LAYER", "  2", "Shape", " 70", "0", " 62", "7", "  0", "LAYER", "  2", "Edge_Banding", " 70", "0", " 62", "1", "  0", "ENDTAB", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES"];
-    dxf = dxf.concat(getDXFPolyline("Shape", dxfPts, true));
+    dxf = dxf.concat(getDXFPolyline("Shape", shapePts, true));
     currentSections.forEach((sec, sIdx) => {
         const cb = document.getElementById(`bandSec${sIdx}`);
         if (cb && cb.checked) {
-            if (sec.length === n) { dxf = dxf.concat(getDXFPolyline("Edge_Banding", dxfPts, true)); } 
+            if (sec.length === n) { dxf = dxf.concat(getDXFPolyline("Edge_Banding", shapePts, true)); } 
             else {
-                let secPts = []; secPts.push({ x: dxfPts[sec[0] * 2 + 1].x, y: dxfPts[sec[0] * 2 + 1].y, bulge: 0 });
+                let secPts = [], firstEdge = sec[0], prevCorner = (firstEdge + n - 1) % n;
+                secPts.push(dxfCorners[prevCorner].end);
                 for (let i = 0; i < sec.length; i++) {
-                    let nextCorner = (sec[i] + 1) % n, arcStartPt = dxfPts[nextCorner * 2];
-                    if (i < sec.length - 1) { secPts.push({ x: arcStartPt.x, y: arcStartPt.y, bulge: arcStartPt.bulge }); secPts.push({ x: dxfPts[nextCorner * 2 + 1].x, y: dxfPts[nextCorner * 2 + 1].y, bulge: 0 }); } 
-                    else { secPts.push({ x: arcStartPt.x, y: arcStartPt.y, bulge: 0 }); }
+                    let c = dxfCorners[(sec[i] + 1) % n];
+                    secPts.push(c.start);
+                    if (i < sec.length - 1 && (c.start.x !== c.end.x || c.start.y !== c.end.y)) secPts.push(c.end);
                 }
                 dxf = dxf.concat(getDXFPolyline("Edge_Banding", secPts, false));
             }
