@@ -342,25 +342,20 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
 // --- DXF helpers: exact arc endpoints and entities (LINE + ARC) ---
 
 function getExactPoints(c) {
+    // For sharp corners, just use the corner point
     if (c.R_off <= 0.001) {
         return { enter: c.C_off, exit: c.C_off };
     }
 
-    let cx = c.arcCenter.x;
-    let cy = c.arcCenter.y;
-    let r = c.R_off;
-    let a1 = c.dxfStart * Math.PI / 180;
-    let a2 = c.dxfEnd * Math.PI / 180;
-
-    let pt1 = { x: cx + r * Math.cos(a1), y: cy + r * Math.sin(a1) };
-    let pt2 = { x: cx + r * Math.cos(a2), y: cy + r * Math.sin(a2) };
-
-    if (c.drawCCW) {
-        return { enter: pt1, exit: pt2 };
-    } else {
-        return { enter: pt2, exit: pt1 };
-    }
+    // Use the exact tangent points we already computed for the canvas path
+    // arcStart = point where the incoming line meets the arc
+    // arcEnd   = point where the arc meets the outgoing line
+    return {
+        enter: { x: c.arcStart.x, y: c.arcStart.y },
+        exit:  { x: c.arcEnd.x,   y: c.arcEnd.y }
+    };
 }
+
 
 function getDXFEntities(corners, layer, isClosed, sec = null) {
     let dxf = [];
@@ -380,14 +375,26 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
 
     const pushArc = (c) => {
         if (c.R_off <= 0.001) return;
+
+        // Ensure angles correspond to arcStart (enter) and arcEnd (exit)
+        // Recompute from geometry to be absolutely consistent
+        const cx = c.arcCenter.x;
+        const cy = c.arcCenter.y;
+
+        const aStart = Math.atan2(c.arcStart.y - cy, c.arcStart.x - cx) * 180 / Math.PI;
+        const aEnd   = Math.atan2(c.arcEnd.y   - cy, c.arcEnd.x   - cx) * 180 / Math.PI;
+
+        let s = aStart < 0 ? aStart + 360 : aStart;
+        let e = aEnd   < 0 ? aEnd   + 360 : aEnd;
+
         dxf.push(
             "  0", "ARC",
             "  8", layer,
-            " 10", c.arcCenter.x.toFixed(8),
-            " 20", c.arcCenter.y.toFixed(8),
+            " 10", cx.toFixed(8),
+            " 20", cy.toFixed(8),
             " 40", c.R_off.toFixed(8),
-            " 50", c.dxfStart.toFixed(8),
-            " 51", c.dxfEnd.toFixed(8)
+            " 50", s.toFixed(8),
+            " 51", e.toFixed(8)
         );
     };
 
@@ -395,13 +402,17 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
         for (let i = 0; i < n; i++) {
             let c1 = corners[i];
             let c2 = corners[(i + 1) % n];
+
             const p1 = getExactPoints(c1);
             const p2 = getExactPoints(c2);
 
+            // Arc at corner i
             pushArc(c1);
+            // Straight between this arc and the next arc
             pushLine(p1.exit, p2.enter);
         }
     } else {
+        // Open banding section
         for (let i = 0; i < sec.length; i++) {
             let edgeIdx = sec[i];
             let c1 = corners[edgeIdx];
@@ -411,10 +422,12 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
             const p2 = getExactPoints(c2);
 
             if (i === 0) {
+                // First straight segment
                 pushLine(p1.exit, p2.enter);
             }
 
             if (i < sec.length - 1) {
+                // Arc at the next corner along this banded run
                 let cornerIdx = (edgeIdx + 1) % n;
                 pushArc(corners[cornerIdx]);
 
@@ -422,6 +435,7 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
                 let nextCornerIdx = (nextEdgeIdx + 1) % n;
                 const pMid = getExactPoints(corners[cornerIdx]);
                 const pNext = getExactPoints(corners[nextCornerIdx]);
+
                 pushLine(pMid.exit, pNext.enter);
             }
         }
@@ -429,6 +443,7 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
 
     return dxf;
 }
+
 
 function updateBandingUI(radii) {
     const n = radii.length;
