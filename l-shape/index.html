@@ -25,7 +25,7 @@
 <div class="container">
   <h2>L-Shape Generator (mm)</h2>
   <div id="sheetWarning" class="warning-box">⚠️ Part exceeds maximum sheet size (2400 x 1200 mm). Values have been adjusted to fit.</div>
-  <div id="radiusWarning" class="warning-box">⚠️ Radii adjusted! Ensure banded corners have at least a 50mm radius.</div>
+  <div id="radiusWarning" class="warning-box">⚠️ Radii adjusted! Ensure banded corners have at least a 50mm radius and do not overlap.</div>
 
   <div class="main-layout">
       <div class="left-col">
@@ -57,11 +57,11 @@
             <p style="font-size: 11px; color: #b5bac1; margin-top: -5px; margin-bottom: 12px;">Hover to highlight on diagram. Corner 4 is the Internal radius.</p>
             <div class="corner-grid">
                 <div class="corner-input-wrap inner-corner-box" data-corner="3"><label>Corner 4 (Internal)</label><input type="number" id="rad3" value="50" min="50"></div>
-                <div class="corner-input-wrap" data-corner="0"><label>Corner 1</label><input type="number" id="rad0" value="0"></div>
-                <div class="corner-input-wrap" data-corner="1"><label>Corner 2</label><input type="number" id="rad1" value="0"></div>
-                <div class="corner-input-wrap" data-corner="2"><label>Corner 3</label><input type="number" id="rad2" value="0"></div>
-                <div class="corner-input-wrap" data-corner="4"><label>Corner 5</label><input type="number" id="rad4" value="0"></div>
-                <div class="corner-input-wrap" data-corner="5"><label>Corner 6</label><input type="number" id="rad5" value="0"></div>
+                <div class="corner-input-wrap" data-corner="0"><label>Corner 1 (Btm L)</label><input type="number" id="rad0" value="0"></div>
+                <div class="corner-input-wrap" data-corner="1"><label>Corner 2 (Btm R)</label><input type="number" id="rad1" value="0"></div>
+                <div class="corner-input-wrap" data-corner="2"><label>Corner 3 (Mid R)</label><input type="number" id="rad2" value="0"></div>
+                <div class="corner-input-wrap" data-corner="4"><label>Corner 5 (Top R)</label><input type="number" id="rad4" value="0"></div>
+                <div class="corner-input-wrap" data-corner="5"><label>Corner 6 (Top L)</label><input type="number" id="rad5" value="0"></div>
             </div>
           </div>
 
