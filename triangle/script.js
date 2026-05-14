@@ -182,7 +182,8 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         let R_off = isConvex ? r + offset * scale : r - offset * scale;
         R_off = Math.max(0, R_off); if (r === 0) R_off = 0;
         let d = R_off > 0 ? R_off * Math.abs(Math.tan(alpha / 2)) : 0;
-        rawCorners.push({ C_off, R_off, d, alpha, cross, isConvex });
+        let bulge = Math.tan(alpha / 4);
+        rawCorners.push({ C_off, R_off, d, alpha, cross, isConvex, bulge });
     }
     
     for (let i = 0; i < n; i++) {
@@ -202,44 +203,46 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         let rc = rawCorners[i], ePrev = edges[(i + n - 1) % n], eNext = edges[i];
         let arcStart = { x: rc.C_off.x - ePrev.vx * rc.d, y: rc.C_off.y - ePrev.vy * rc.d };
         let arcEnd = { x: rc.C_off.x + eNext.vx * rc.d, y: rc.C_off.y + eNext.vy * rc.d };
-        let arcMid = { x: rc.C_off.x, y: rc.C_off.y }, arcCenter = { x: rc.C_off.x, y: rc.C_off.y };
-        let dxfStart = 0, dxfEnd = 0;
+        let arcMid = { x: rc.C_off.x, y: rc.C_off.y }, bulge = 0;
 
         if (rc.R_off > 0) {
-            let vX = eNext.vx - ePrev.vx, vY = eNext.vy - ePrev.vy;
-            let vLen = Math.hypot(vX, vY);
-            if (vLen > 0.0001) {
-                vX /= vLen; vY /= vLen;
-                let distToCenter = Math.hypot(rc.d, rc.R_off);
-                let cx1 = rc.C_off.x + vX * distToCenter, cy1 = rc.C_off.y + vY * distToCenter;
-                let cx2 = rc.C_off.x - vX * distToCenter, cy2 = rc.C_off.y - vY * distToCenter;
-                let d1 = Math.abs(Math.hypot(cx1 - arcStart.x, cy1 - arcStart.y) - rc.R_off);
-                let d2 = Math.abs(Math.hypot(cx2 - arcStart.x, cy2 - arcStart.y) - rc.R_off);
-                arcCenter = (d1 < d2) ? { x: cx1, y: cy1 } : { x: cx2, y: cy2 };
-            }
-
-            let aStart = Math.atan2(arcStart.y - arcCenter.y, arcStart.x - arcCenter.x) * 180 / Math.PI;
-            let aEnd   = Math.atan2(arcEnd.y - arcCenter.y, arcEnd.x - arcCenter.x) * 180 / Math.PI;
-            if (aStart < 0) aStart += 360;
-            if (aEnd < 0) aEnd += 360;
-
-            let aMidCCW = (aStart < aEnd) ? (aStart + aEnd) / 2 : (aStart + aEnd + 360) / 2;
-            let midCCWx = arcCenter.x + rc.R_off * Math.cos(aMidCCW * Math.PI / 180);
-            let midCCWy = arcCenter.y + rc.R_off * Math.sin(aMidCCW * Math.PI / 180);
-            let aMidCW = aMidCCW + 180;
-            let midCWx = arcCenter.x + rc.R_off * Math.cos(aMidCW * Math.PI / 180);
-            let midCWy = arcCenter.y + rc.R_off * Math.sin(aMidCW * Math.PI / 180);
-
-            let distCCW = Math.hypot(midCCWx - rc.C_off.x, midCCWy - rc.C_off.y);
-            let distCW = Math.hypot(midCWx - rc.C_off.x, midCWy - rc.C_off.y);
-
-            if (distCCW < distCW) { dxfStart = aStart; dxfEnd = aEnd; } 
-            else { dxfStart = aEnd; dxfEnd = aStart; }
-            arcMid = (distCCW < distCW) ? {x: midCCWx, y: midCCWy} : {x: midCWx, y: midCWy};
+            let sign = Math.sign(rc.cross) || 1, nx = -ePrev.vy * sign, ny = ePrev.vx * sign;
+            let cx = arcStart.x + nx * rc.R_off, cy = arcStart.y + ny * rc.R_off;
+            let vX = rc.C_off.x - cx, vY = rc.C_off.y - cy, vLen = Math.hypot(vX, vY) || 1;
+            arcMid = { x: cx + (vX / vLen) * rc.R_off, y: cy + (vY / vLen) * rc.R_off };
+            bulge = (rc.isConvex ? 1 : -1) * CW * rc.bulge;
         }
-        corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, arcCenter, dxfStart, dxfEnd });
+        corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, bulge });
     }
     return corners;
+}
+
+function getDXFPolyline(layer, corners, isClosed, sec = null) {
+    const n = corners.length;
+    let dxf = ["  0", "POLYLINE", "  8", layer, " 66", "1", " 70", isClosed ? "1" : "0"];
+    let pts = [];
+    
+    if (isClosed) {
+        for (let i = 0; i < n; i++) {
+            let c = corners[i];
+            pts.push({ x: c.arcStart.x, y: c.arcStart.y, bulge: c.R_off > 0 ? c.bulge : 0 });
+            if (c.R_off > 0) pts.push({ x: c.arcEnd.x, y: c.arcEnd.y, bulge: 0 });
+        }
+    } else {
+        for (let i = 0; i < sec.length; i++) {
+            let edgeIdx = sec[i], c1 = corners[edgeIdx], c2 = corners[(edgeIdx + 1) % n];
+            if (i === 0) pts.push({ x: c1.arcEnd.x, y: c1.arcEnd.y, bulge: 0 });
+            let useBulge = (i < sec.length - 1 && c2.R_off > 0);
+            pts.push({ x: c2.arcStart.x, y: c2.arcStart.y, bulge: useBulge ? c2.bulge : 0 });
+            if (useBulge) pts.push({ x: c2.arcEnd.x, y: c2.arcEnd.y, bulge: 0 });
+        }
+    }
+    
+    pts.forEach(p => {
+        dxf.push("  0", "VERTEX", "  8", layer, " 10", p.x.toFixed(4), " 20", p.y.toFixed(4), " 42", (p.bulge || 0).toFixed(8));
+    });
+    dxf.push("  0", "SEQEND", "  8", layer);
+    return dxf;
 }
 
 function updateBandingUI(radii) {
@@ -342,33 +345,6 @@ function drawDimensions(ctx, pts, scale, offsetX, offsetY) {
     }
 }
 
-function getDXFEntities(corners, layer, isClosed, sec = null) {
-    let dxf = [];
-    const n = corners.length;
-    const pushLine = (p1, p2) => {
-        if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.001) return;
-        dxf.push("  0", "LINE", "  8", layer, " 10", p1.x.toFixed(8), " 20", p1.y.toFixed(8), " 11", p2.x.toFixed(8), " 21", p2.y.toFixed(8));
-    };
-    const pushArc = (c) => {
-        if (c.R_off <= 0.001) return;
-        dxf.push("  0", "ARC", "  8", layer, " 10", c.arcCenter.x.toFixed(8), " 20", c.arcCenter.y.toFixed(8), " 40", c.R_off.toFixed(8), " 50", c.dxfStart.toFixed(8), " 51", c.dxfEnd.toFixed(8));
-    };
-
-    if (isClosed) {
-        for (let i = 0; i < n; i++) {
-            pushArc(corners[i]);
-            pushLine(corners[i].arcEnd, corners[(i + 1) % n].arcStart);
-        }
-    } else {
-        for (let i = 0; i < sec.length; i++) {
-            let edgeIdx = sec[i], c1 = corners[edgeIdx], c2 = corners[(edgeIdx + 1) % n];
-            pushLine(c1.arcEnd, c2.arcStart);
-            if (i < sec.length - 1) pushArc(c2);
-        }
-    }
-    return dxf;
-}
-
 function downloadPNG() {
     const tempCanvas = document.createElement("canvas"); 
     tempCanvas.width = 3840; tempCanvas.height = 2160;
@@ -391,14 +367,14 @@ function downloadDXF() {
     ];
     
     const baseCorners = generatePathData(pts, 0, radii);
-    dxf = dxf.concat(getDXFEntities(baseCorners, "Shape", true, null));
+    dxf = dxf.concat(getDXFPolyline("Shape", baseCorners, true));
     
     const bandCorners = generatePathData(pts, 12, radii);
     currentSections.forEach((sec, sIdx) => {
         const cb = document.getElementById(`bandSec${sIdx}`);
         if (cb && cb.checked) {
-            if (sec.length === n) dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", true, null)); 
-            else dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", false, sec));
+            if (sec.length === n) dxf = dxf.concat(getDXFPolyline("Edge_Banding", bandCorners, true)); 
+            else dxf = dxf.concat(getDXFPolyline("Edge_Banding", bandCorners, false, sec));
         }
     });
     
