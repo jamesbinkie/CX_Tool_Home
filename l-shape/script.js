@@ -339,7 +339,7 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     return corners;
 }
 
-// DXF entities from corners (Shape or Edge_Banding)
+// DXF entities for banding (still ARC/LINE)
 function getDXFEntities(corners, layer, isClosed, sec = null) {
     let dxf = [];
     const n = corners.length;
@@ -423,6 +423,59 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
     }
 
     return dxf;
+}
+
+// Build a single closed LWPOLYLINE (Shape) with bulges
+function buildShapePolyline(corners) {
+    const n = corners.length;
+    let verts = [];
+
+    for (let i = 0; i < n; i++) {
+        const c = corners[i];
+
+        // First vertex
+        if (i === 0) {
+            if (c.R_off > 0) {
+                verts.push({ x: c.arcStart.x, y: c.arcStart.y, bulge: 0 });
+            } else {
+                verts.push({ x: c.C_off.x, y: c.C_off.y, bulge: 0 });
+            }
+        }
+
+        // Arc at this corner (if any)
+        if (c.R_off > 0) {
+            const cx = c.arcCenter.x;
+            const cy = c.arcCenter.y;
+
+            let aStart = Math.atan2(c.arcStart.y - cy, c.arcStart.x - cx);
+            let aEnd   = Math.atan2(c.arcEnd.y   - cy, c.arcEnd.x   - cx);
+
+            let delta = aEnd - aStart;
+            while (delta <= -Math.PI) delta += 2 * Math.PI;
+            while (delta >  Math.PI)  delta -= 2 * Math.PI;
+
+            const bulge = Math.tan(delta / 4);
+
+            verts.push({ x: c.arcEnd.x, y: c.arcEnd.y, bulge });
+        }
+
+        // Straight to next corner's start
+        const next = corners[(i + 1) % n];
+        let nextStart;
+        if (next.R_off > 0) nextStart = next.arcStart;
+        else nextStart = next.C_off;
+
+        verts.push({ x: nextStart.x, y: nextStart.y, bulge: 0 });
+    }
+
+    // Remove duplicate last vertex if it matches first
+    if (verts.length > 1) {
+        const f = verts[0];
+        const l = verts[verts.length - 1];
+        if (Math.hypot(l.x - f.x, l.y - f.y) < 1e-6) verts.pop();
+    }
+
+    return verts;
 }
 
 function updateBandingUI(radii) {
@@ -662,24 +715,12 @@ function downloadDXF() {
     const radii = getRadii();
     const n = pts.length;
 
-    // Build geometry once
-    const baseCorners = generatePathData(pts, 0, radii);
-    const bandCorners = generatePathData(pts, 12, radii);
+    // Geometry for DXF is in real mm coordinates (no flip, no scale)
+    const shapeCorners = generatePathData(pts, 0, radii, 1, 0, 0);
+    const bandCorners  = generatePathData(pts, 12, radii, 1, 0, 0);
 
-    // Collect all entities that will live inside the BLOCK
-    let blockEntities = [];
-    blockEntities = blockEntities.concat(getDXFEntities(baseCorners, "Shape", true, null));
-
-    currentSections.forEach((sec, sIdx) => {
-        const cb = document.getElementById(`bandSec${sIdx}`);
-        if (cb && cb.checked) {
-            if (sec.length === n) {
-                blockEntities = blockEntities.concat(getDXFEntities(bandCorners, "Edge_Banding", true, null));
-            } else {
-                blockEntities = blockEntities.concat(getDXFEntities(bandCorners, "Edge_Banding", false, sec));
-            }
-        }
-    });
+    // Build single closed LWPOLYLINE for Shape
+    const polyVerts = buildShapePolyline(shapeCorners);
 
     let dxf = [
         "  0", "SECTION",
@@ -722,40 +763,40 @@ function downloadDXF() {
         "  0", "ENDTAB",
         "  0", "ENDSEC",
 
-        // BLOCKS section with ShapeBlock
         "  0", "SECTION",
-        "  2", "BLOCKS",
-
-        "  0", "BLOCK",
-        "  8", "0",
-        "  2", "ShapeBlock",
-        " 70", "0",
-        " 10", "0.0",
-        " 20", "0.0",
-        " 30", "0.0"
+        "  2", "ENTITIES"
     ];
 
-    // Add all geometry into the BLOCK
-    dxf = dxf.concat(blockEntities);
-
+    // Single closed LWPOLYLINE for Shape
     dxf.push(
-        "  0", "ENDBLK",
-        "  0", "ENDSEC",
-
-        // ENTITIES section: single INSERT of ShapeBlock
-        "  0", "SECTION",
-        "  2", "ENTITIES",
-
-        "  0", "INSERT",
-        "  8", "0",
-        "  2", "ShapeBlock",
-        " 10", "0.0",
-        " 20", "0.0",
-        " 30", "0.0",
-
-        "  0", "ENDSEC",
-        "  0", "EOF"
+        "  0", "LWPOLYLINE",
+        "  8", "Shape",
+        " 90", polyVerts.length.toString(),
+        " 70", "1",          // closed
+        " 43", "0.0"         // constant width
     );
+
+    polyVerts.forEach(v => {
+        dxf.push(
+            " 10", v.x.toFixed(8),
+            " 20", v.y.toFixed(8),
+            " 42", v.bulge.toFixed(8)
+        );
+    });
+
+    // Edge banding as separate ARC/LINE entities
+    currentSections.forEach((sec, sIdx) => {
+        const cb = document.getElementById(`bandSec${sIdx}`);
+        if (cb && cb.checked) {
+            if (sec.length === n) {
+                dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", true, null));
+            } else {
+                dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", false, sec));
+            }
+        }
+    });
+
+    dxf.push("  0", "ENDSEC", "  0", "EOF");
 
     const blob = new Blob([dxf.join("\r\n")], { type: "application/dxf" });
     const link = document.createElement("a");
