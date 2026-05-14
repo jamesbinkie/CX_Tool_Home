@@ -44,14 +44,17 @@
       <div class="controls panel">
         <h3>Dimensions</h3>
         <label class="full-width" style="margin-bottom: 15px;">Type:<select id="type"><option value="right">Right triangle</option><option value="left">Left Triangle</option><option value="standard">Triangle</option></select></label>
-        <div id="wh-controls" class="input-grid">
+        
+        <div id="wh-controls" style="display: flex; gap: 20px; flex-wrap: wrap; width: 100%;">
             <label>Width (W):<input id="W" type="number" value="500" onclick="this.select()"><div class="range" id="rangeW">Min 200 mm — Max 2400 mm</div></label>
             <label>Height (H):<input id="H" type="number" value="500" onclick="this.select()"><div class="range" id="rangeH">Min 200 mm — Max 2400 mm</div></label>
         </div>
+        
         <div id="standard-toggle-wrap" class="full-width" style="display: none; align-items: center; padding-top: 15px;">
             <label style="flex-direction: row; align-items: center; min-width: auto; gap: 10px;"><input type="checkbox" id="isSymmetric" checked> Symmetric</label>
         </div>
-        <div id="abc-controls" class="input-grid" style="display: none;">
+        
+        <div id="abc-controls" style="display: none; gap: 20px; flex-wrap: wrap; width: 100%;">
             <label>Side A (Right): <input id="sideA" type="number" value="500" onclick="this.select()"></label>
             <label>Side B (Left): <input id="sideB" type="number" value="500" onclick="this.select()"></label>
             <label class="full-width">Side C (Btm): <input id="sideC" type="number" value="600" onclick="this.select()"></label>
@@ -75,7 +78,7 @@
     </div>
   </div>
 </div>
-<div id="versionLabel">v4.0.0</div>
+<div id="versionLabel">v4.2.2</div>
 
 <script src="script.js"></script>
 </body>
