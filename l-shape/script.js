@@ -225,9 +225,8 @@ function computeDXFVertices(pts, radii) {
         let v1x = p1.x - p0.x, v1y = p1.y - p0.y, l1 = Math.hypot(v1x, v1y) || 1; v1x /= l1; v1y /= l1;
         let v2x = p2.x - p1.x, v2y = p2.y - p1.y, l2 = Math.hypot(v2x, v2y) || 1; v2x /= l2; v2y /= l2;
         if (r > 0) {
-            let cross = v1x * v2y - v1y * v2x, dot = v1x * v2x + v1y * v2y, alpha = Math.atan2(cross, dot), isConvex = (cross * CW) > 0, d = r * Math.abs(Math.tan(alpha / 2)), bulge = Math.tan(alpha / 4);
-            if (!isConvex) bulge = -bulge;
-            dxfPts.push({ x: p1.x - v1x * d, y: p1.y - v1y * d, bulge: bulge });
+            let cross = v1x * v2y - v1y * v2x, dot = v1x * v2x + v1y * v2y, alpha = Math.atan2(cross, dot), d = r * Math.abs(Math.tan(alpha / 2));
+            dxfPts.push({ x: p1.x - v1x * d, y: p1.y - v1y * d, bulge: Math.tan(alpha / 4) });
             dxfPts.push({ x: p1.x + v2x * d, y: p1.y + v2y * d, bulge: 0 });
         } else { dxfPts.push({ x: p1.x, y: p1.y, bulge: 0 }); }
     }
@@ -235,8 +234,10 @@ function computeDXFVertices(pts, radii) {
 }
 
 function downloadPNG() {
-    const tempCanvas = document.createElement("canvas"); tempCanvas.width = 4096; tempCanvas.height = 2730;
-    const tctx = tempCanvas.getContext("2d"); tctx.fillStyle = "#ffffff"; tctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    const tempCanvas = document.createElement("canvas"); 
+    tempCanvas.width = 3840; tempCanvas.height = 2160;
+    const tctx = tempCanvas.getContext("2d"); 
+    tctx.fillStyle = "#ffffff"; tctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
     drawLShape(tempCanvas);
     const link = document.createElement("a"); link.download = (document.getElementById("fileName").value || "l_shape") + ".png"; link.href = tempCanvas.toDataURL("image/png"); link.click();
 }
