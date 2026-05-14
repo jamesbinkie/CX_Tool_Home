@@ -24,6 +24,7 @@ window.onload = () => {
         wrap.addEventListener('mouseenter', () => { highlightedCorner = parseInt(wrap.dataset.corner); drawTrapezium(); });
         wrap.addEventListener('mouseleave', () => { highlightedCorner = -1; drawTrapezium(); });
     });
+    window.addEventListener("resize", drawTrapezium); // Native auto-resizing
     refreshMaxLabels(); updateUI();
 };
 
@@ -126,9 +127,13 @@ function updateBandingUI(radii) {
 
 function drawTrapezium(targetCanvas = null) {
     const canvas = targetCanvas || document.getElementById("canvas"), ctx = canvas.getContext("2d");
-    if (!targetCanvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!targetCanvas) {
+        const rect = canvas.getBoundingClientRect();
+        if (canvas.width !== rect.width || canvas.height !== rect.height) { canvas.width = rect.width; canvas.height = rect.height; }
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     const pts = getPoints(), radii = getRadii(), xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), shapeW = Math.max(...xs) - Math.min(...xs), shapeH = Math.max(...ys) - Math.min(...ys);
-    const margin = canvas.width * 0.12, scale = Math.min((canvas.width - margin * 2) / (shapeW || 1), (canvas.height - margin * 2) / (shapeH || 1)), offX = (canvas.width - shapeW * scale) / 2 - Math.min(...xs) * scale, offY = (canvas.height - shapeH * scale) / 2 - Math.min(...ys) * scale, n = pts.length;
+    const margin = Math.min(canvas.width, canvas.height) * 0.15, scale = Math.min((canvas.width - margin * 2) / (shapeW || 1), (canvas.height - margin * 2) / (shapeH || 1)), offX = (canvas.width - shapeW * scale) / 2 - Math.min(...xs) * scale, offY = (canvas.height - shapeH * scale) / 2 - Math.min(...ys) * scale, n = pts.length;
     const baseData = generatePathData(pts, 0, radii, scale, offX, offY), crns = baseData.corners;
 
     ctx.beginPath(); ctx.moveTo(crns[0].arcStart.x, crns[0].arcStart.y);
@@ -137,15 +142,15 @@ function drawTrapezium(targetCanvas = null) {
         if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
         ctx.lineTo(crns[(i + 1) % n].arcStart.x, crns[(i + 1) % n].arcStart.y);
     }
-    ctx.closePath(); ctx.lineWidth = Math.max(2, 3 * (ctx.canvas.width / 900)); ctx.strokeStyle = "#000"; ctx.stroke();
+    ctx.closePath(); ctx.lineWidth = Math.max(2, 3 * (canvas.width / 1200)); ctx.strokeStyle = "#000"; ctx.stroke();
 
     const bandingControls = document.getElementById("dynamic-banding-controls");
     if (bandingControls && bandingControls.children.length > 0) {
-        const bandData = generatePathData(pts, 12 * (ctx.canvas.width/900), radii, scale, offX, offY), bCrns = bandData.corners;
+        const bandData = generatePathData(pts, 12 * (canvas.width / 1200), radii, scale, offX, offY), bCrns = bandData.corners;
         currentSections.forEach((sec, sIdx) => {
             const cb = document.getElementById(`bandSec${sIdx}`);
             if (cb && cb.checked) {
-                ctx.beginPath(); ctx.strokeStyle = bandingColors[sIdx % bandingColors.length]; ctx.lineWidth = 4 * (ctx.canvas.width/900);
+                ctx.beginPath(); ctx.strokeStyle = bandingColors[sIdx % bandingColors.length]; ctx.lineWidth = 5 * (canvas.width / 1200);
                 if (sec.length === n) {
                     ctx.moveTo(bCrns[0].arcStart.x, bCrns[0].arcStart.y);
                     for (let i = 0; i < n; i++) {
@@ -176,26 +181,27 @@ function drawDimensions(ctx, pts, scale, offsetX, offsetY) {
     const TL = pts[0], TR = pts[1], BR = pts[2], BL = pts[3];
     drawDimLine(ctx, TL[0] * scale + offsetX, TL[1] * scale + offsetY, TR[0] * scale + offsetX, TR[1] * scale + offsetY, `${Number((TR[0] - TL[0]).toFixed(2))} mm`, "above");
     drawDimLine(ctx, BL[0] * scale + offsetX, BL[1] * scale + offsetY, BR[0] * scale + offsetX, BR[1] * scale + offsetY, `${Number((BR[0] - BL[0]).toFixed(2))} mm`, "below");
-    const shapeLeft = Math.min(TL[0] * scale + offsetX, BL[0] * scale + offsetX), scaleFactor = ctx.canvas.width / 900, dimOffset = 20 * scaleFactor, spaceLeft = shapeLeft, spaceRight = ctx.canvas.width - Math.max(TR[0] * scale + offsetX, BR[0] * scale + offsetX);
+    const shapeLeft = Math.min(TL[0] * scale + offsetX, BL[0] * scale + offsetX), scaleFactor = ctx.canvas.width / 1200, dimOffset = 25 * scaleFactor, spaceLeft = shapeLeft, spaceRight = ctx.canvas.width - Math.max(TR[0] * scale + offsetX, BR[0] * scale + offsetX);
     let position = (spaceRight > spaceLeft) ? "right" : "left", dimX = (position === "right") ? Math.max(TR[0] * scale + offsetX, BR[0] * scale + offsetX) + dimOffset : shapeLeft - dimOffset;
     drawDimLine(ctx, dimX, TL[1] * scale + offsetY, dimX, BL[1] * scale + offsetY, `${Number((BL[1] - TL[1]).toFixed(2))} mm`, position);
 }
 
 function drawDimLine(ctx, x1, y1, x2, y2, label, position) {
-    const scaleFactor = ctx.canvas.width / 900, offset = 20 * scaleFactor, textOffset = 12 * scaleFactor;
-    ctx.font = Math.max(10, 18 * scaleFactor) + "px Arial";
+    const scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1;
+    const offset = 25 * scaleFactor, textOffset = 15 * scaleFactor;
+    ctx.font = `bold ${Math.max(12, 16 * scaleFactor)}px Arial`;
     let lineX1 = x1, lineY1 = y1, lineX2 = x2, lineY2 = y2;
     if (position === "above") { lineY1 -= offset; lineY2 -= offset; } else if (position === "below") { lineY1 += offset; lineY2 += offset; } else if (position === "left") { lineX1 -= offset; lineX2 -= offset; } else if (position === "right") { lineX1 += offset; lineX2 += offset; }
-    ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, 1.2 * scaleFactor); ctx.stroke();
-    drawArrow(ctx, lineX1, lineY1, lineX2, lineY2); drawArrow(ctx, lineX2, lineY2, lineX1, lineY1);
+    ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, 1.5 * scaleFactor); ctx.stroke();
+    drawArrow(ctx, lineX1, lineY1, lineX2, lineY2, scaleFactor); drawArrow(ctx, lineX2, lineY2, lineX1, lineY1, scaleFactor);
     ctx.textAlign = (position === "left") ? "right" : (position === "right" ? "left" : "center"); ctx.textBaseline = (position === "below") ? "top" : (position === "above" ? "bottom" : "middle");
     let textX = (lineX1 + lineX2) / 2, textY = (lineY1 + lineY2) / 2;
     if (position === "above") textY -= textOffset; else if (position === "below") textY += textOffset; else if (position === "left") textX -= textOffset; else if (position === "right") textX += textOffset;
     ctx.fillStyle = "#000"; ctx.fillText(label, textX, textY);
 }
 
-function drawArrow(ctx, x1, y1, x2, y2) {
-    const scaleFactor = ctx.canvas.width / 900, size = 8 * scaleFactor, arrowOffset = 6 * scaleFactor, angle = Math.atan2(y2 - y1, x2 - x1), tipX = x2 + arrowOffset * Math.cos(angle), tipY = y2 + arrowOffset * Math.sin(angle);
+function drawArrow(ctx, x1, y1, x2, y2, scaleFactor) {
+    const size = 10 * scaleFactor, arrowOffset = 8 * scaleFactor, angle = Math.atan2(y2 - y1, x2 - x1), tipX = x2 + arrowOffset * Math.cos(angle), tipY = y2 + arrowOffset * Math.sin(angle);
     ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.lineTo(tipX - size * Math.cos(angle - Math.PI / 6), tipY - size * Math.sin(angle - Math.PI / 6)); ctx.lineTo(tipX - size * Math.cos(angle + Math.PI / 6), tipY - size * Math.sin(angle + Math.PI / 6)); ctx.closePath(); ctx.fillStyle = "#000"; ctx.fill();
 }
 
@@ -207,8 +213,6 @@ function getDXFPolyline(layer, vertices, isClosed) {
 
 function computeDXFVertices(pts, radii) {
     const n = pts.length, dxfCorners = [];
-    let area = 0; for (let i = 0; i < n; i++) area += pts[i].x * pts[(i + 1) % n].y - pts[(i + 1) % n].x * pts[i].y;
-    const CW = area > 0 ? 1 : -1;
     for (let i = 0; i < n; i++) {
         const p0 = pts[(i + n - 1) % n], p1 = pts[i], p2 = pts[(i + 1) % n], r = radii[i];
         let v1x = p1.x - p0.x, v1y = p1.y - p0.y, l1 = Math.hypot(v1x, v1y) || 1; v1x /= l1; v1y /= l1;
@@ -241,10 +245,10 @@ function downloadDXF() {
         if (cb && cb.checked) {
             if (sec.length === n) { dxf = dxf.concat(getDXFPolyline("Edge_Banding", shapePts, true)); } 
             else {
-                let secPts = [], firstEdge = sec[0], prevCorner = (firstEdge + n - 1) % n;
-                secPts.push(dxfCorners[prevCorner].end);
+                let secPts = [], firstEdge = sec[0];
+                secPts.push(dxfCorners[firstEdge].end);
                 for (let i = 0; i < sec.length; i++) {
-                    let c = dxfCorners[(sec[i] + 1) % n];
+                    let nextCorner = (sec[i] + 1) % n, c = dxfCorners[nextCorner];
                     secPts.push(c.start);
                     if (i < sec.length - 1 && (c.start.x !== c.end.x || c.start.y !== c.end.y)) secPts.push(c.end);
                 }
