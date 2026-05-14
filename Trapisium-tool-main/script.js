@@ -57,25 +57,36 @@ function validateRadii() {
     const radii = getRadii();
     const pts = getPoints();
     const n = pts.length;
-    let changed = false;
+    
+    for (let i = 0; i < n; i++) {
+        let val = radii[i];
+        if (val === 0) continue;
+        let isBanded = false;
+        currentSections.forEach((sec, sIdx) => { 
+            const cb = document.getElementById(`bandSec${sIdx}`); 
+            if (cb && cb.checked && (sec.includes(i) || sec.includes((i + n - 1) % n))) isBanded = true; 
+        });
+        if (isBanded && val > 0 && val < 50) { 
+            radii[i] = 50; 
+            document.getElementById(`rad${i}`).value = 50;
+            conflict = true; 
+        }
+    }
 
-    let edges = [];
-    let area = 0;
-    for (let i = 0; i < n; i++) area += pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1];
-    const CW = area > 0 ? 1 : -1;
+    let changed = false, edges = [];
     for (let i = 0; i < n; i++) {
         const p1 = pts[i], p2 = pts[(i + 1) % n];
         let vx = p2[0] - p1[0], vy = p2[1] - p1[1], len = Math.hypot(vx, vy) || 1;
         edges.push({ vx: vx/len, vy: vy/len, len });
     }
-
+    
     let alphas = [];
     for (let i = 0; i < n; i++) {
         let ePrev = edges[(i + n - 1) % n], eNext = edges[i];
         let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy;
         alphas.push(Math.abs(Math.tan(Math.atan2(cross, dot) / 2)));
     }
-
+    
     for (let iter = 0; iter < 10; iter++) {
         let clamped = false;
         for (let i = 0; i < n; i++) {
@@ -83,7 +94,7 @@ function validateRadii() {
             let d1 = r1 * alphas[i], d2 = r2 * alphas[(i + 1) % n];
             let len = edges[i].len;
             if (d1 + d2 > len) {
-                let factor = len / (d1 + d2 + 0.1);
+                let factor = len / (d1 + d2 + 0.001);
                 radii[i] *= factor; radii[(i + 1) % n] *= factor;
                 clamped = true; changed = true;
             }
@@ -94,22 +105,11 @@ function validateRadii() {
     if (changed) {
         for (let i = 0; i < n; i++) document.getElementById(`rad${i}`).value = Math.floor(radii[i]);
     }
-
-    const finalRadii = getRadii();
-    for (let i = 0; i < n; i++) {
-        let val = finalRadii[i];
-        if (val === 0) continue;
-        let isBanded = false;
-        currentSections.forEach((sec, sIdx) => { 
-            const cb = document.getElementById(`bandSec${sIdx}`); 
-            if (cb && cb.checked && (sec.includes(i) || sec.includes((i + n - 1) % n))) isBanded = true; 
-        });
-        if (isBanded && val > 0 && val < 50) { 
-            document.getElementById(`rad${i}`).value = 50; 
-            conflict = true; 
-        }
-    }
-    document.getElementById("radiusWarning").style.display = (conflict || changed) ? "block" : "none";
+    
+    const warnEl = document.getElementById("radiusWarning");
+    warnEl.style.display = (conflict || changed) ? "block" : "none";
+    if (changed && !conflict) warnEl.innerHTML = "⚠️ Radii scaled down to prevent corners overlapping.";
+    else if (conflict) warnEl.innerHTML = "⚠️ Radii adjusted! Banded corners ideally need 50mm+ radius, but may be clamped to fit.";
 }
 
 function getPoints() {
@@ -125,33 +125,61 @@ function intersectLines(l1, l2) {
     return { x: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.x1 - l2.x2) - (l1.x1 - l1.x2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom, y: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom };
 }
 
-function generatePathData(pts, offset, radii, scale, offX, offY) {
+function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     const n = pts.length; let area = 0;
-    for (let i = 0; i < n; i++) area += pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1];
-    const CW = area > 0 ? 1 : -1, cPts = pts.map(p => ({ x: p[0] * scale + offX, y: p[1] * scale + offY })), edges = [];
+    const sPts = pts.map(p => ({ x: p[0] * scale + offX, y: p[1] * scale + offY }));
+    for (let i = 0; i < n; i++) area += sPts[i].x * sPts[(i + 1) % n].y - sPts[(i + 1) % n].x * sPts[i].y;
+    const CW = area > 0 ? 1 : -1, edges = [];
     for (let i = 0; i < n; i++) {
-        const p1 = cPts[i], p2 = cPts[(i + 1) % n];
+        const p1 = sPts[i], p2 = sPts[(i + 1) % n];
         let vx = p2.x - p1.x, vy = p2.y - p1.y, len = Math.hypot(vx, vy) || 1; vx /= len; vy /= len;
         let nx = vy * CW, ny = -vx * CW;
-        edges.push({ vx, vy, nx, ny, offL: { x1: p1.x + nx * offset, y1: p1.y + ny * offset, x2: p2.x + nx * offset, y2: p2.y + ny * offset } });
+        edges.push({ vx, vy, nx, ny, offL: { x1: p1.x + nx * offset * scale, y1: p1.y + ny * offset * scale, x2: p2.x + nx * offset * scale, y2: p2.y + ny * offset * scale } });
     }
+    
+    let rawCorners = [];
+    for (let i = 0; i < n; i++) {
+        const ePrev = edges[(i + n - 1) % n], eNext = edges[i];
+        const C_off = intersectLines(ePrev.offL, eNext.offL);
+        let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy;
+        let alpha = Math.atan2(cross, dot);
+        let isConvex = (cross * CW) > 0;
+        let r = radii[i] * scale;
+        let R_off = isConvex ? r + offset * scale : r - offset * scale;
+        R_off = Math.max(0, R_off); if (r === 0) R_off = 0;
+        let d = R_off > 0 ? R_off * Math.abs(Math.tan(alpha / 2)) : 0;
+        rawCorners.push({ C_off, R_off, d, alpha, cross });
+    }
+    
+    for (let i = 0; i < n; i++) {
+        let c1 = rawCorners[i], c2 = rawCorners[(i + 1) % n];
+        let vx = c2.C_off.x - c1.C_off.x, vy = c2.C_off.y - c1.C_off.y;
+        let dist = Math.hypot(vx, vy);
+        let dot = vx * edges[i].vx + vy * edges[i].vy;
+        if (dot < 0) dist = 0;
+        if (c1.d + c2.d > dist) {
+            let factor = dist / (c1.d + c2.d + 0.0001);
+            c1.d *= factor; c1.R_off = c1.d / Math.abs(Math.tan(c1.alpha / 2) || 1);
+            c2.d *= factor; c2.R_off = c2.d / Math.abs(Math.tan(c2.alpha / 2) || 1);
+        }
+    }
+    
     const corners = [];
     for (let i = 0; i < n; i++) {
-        const ePrev = edges[(i + n - 1) % n], eNext = edges[i], C_off = intersectLines(ePrev.offL, eNext.offL), r = radii[i] * scale, R_off = r > 0 ? r + offset : 0; 
-        let d = 0, arcMid = { x: C_off.x, y: C_off.y }, arcStart = C_off, arcEnd = C_off;
-        if (R_off > 0) {
-            let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy, alpha = Math.atan2(cross, dot);
-            d = R_off * Math.abs(Math.tan(alpha / 2));
-            arcStart = { x: C_off.x - ePrev.vx * d, y: C_off.y - ePrev.vy * d };
-            arcEnd = { x: C_off.x + eNext.vx * d, y: C_off.y + eNext.vy * d };
-            let sign = Math.sign(cross) || 1, nx = -ePrev.vy * sign, ny = ePrev.vx * sign;
-            let cx = arcStart.x + nx * R_off, cy = arcStart.y + ny * R_off;
-            let vX = C_off.x - cx, vY = C_off.y - cy, vLen = Math.hypot(vX, vY) || 1;
-            arcMid = { x: cx + (vX / vLen) * R_off, y: cy + (vY / vLen) * R_off };
+        let rc = rawCorners[i], ePrev = edges[(i + n - 1) % n], eNext = edges[i];
+        let arcStart = { x: rc.C_off.x - ePrev.vx * rc.d, y: rc.C_off.y - ePrev.vy * rc.d };
+        let arcEnd = { x: rc.C_off.x + eNext.vx * rc.d, y: rc.C_off.y + eNext.vy * rc.d };
+        let arcMid = { x: rc.C_off.x, y: rc.C_off.y }, bulge = 0;
+        if (rc.R_off > 0) {
+            let sign = Math.sign(rc.cross) || 1, nx = -ePrev.vy * sign, ny = ePrev.vx * sign;
+            let cx = arcStart.x + nx * rc.R_off, cy = arcStart.y + ny * rc.R_off;
+            let vX = rc.C_off.x - cx, vY = rc.C_off.y - cy, vLen = Math.hypot(vX, vY) || 1;
+            arcMid = { x: cx + (vX / vLen) * rc.R_off, y: cy + (vY / vLen) * rc.R_off };
+            bulge = Math.tan(rc.alpha / 4);
         }
-        corners.push({ C_off, R_off, r_orig: radii[i], arcStart, arcEnd, arcMid });
+        corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, bulge });
     }
-    return { corners, edges };
+    return corners;
 }
 
 function updateBandingUI(radii) {
@@ -193,7 +221,8 @@ function drawTrapezium(targetCanvas = null) {
     }
     const pts = getPoints(), radii = getRadii(), xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), shapeW = Math.max(...xs) - Math.min(...xs), shapeH = Math.max(...ys) - Math.min(...ys);
     const margin = Math.min(canvas.width, canvas.height) * 0.15, scale = Math.min((canvas.width - margin * 2) / (shapeW || 1), (canvas.height - margin * 2) / (shapeH || 1)), offX = (canvas.width - shapeW * scale) / 2 - Math.min(...xs) * scale, offY = (canvas.height - shapeH * scale) / 2 - Math.min(...ys) * scale, n = pts.length;
-    const baseData = generatePathData(pts, 0, radii, scale, offX, offY), crns = baseData.corners;
+    
+    const crns = generatePathData(pts, 0, radii, scale, offX, offY);
 
     ctx.beginPath(); ctx.moveTo(crns[0].arcStart.x, crns[0].arcStart.y);
     for (let i = 0; i < n; i++) {
@@ -205,7 +234,7 @@ function drawTrapezium(targetCanvas = null) {
 
     const bandingControls = document.getElementById("dynamic-banding-controls");
     if (bandingControls && bandingControls.children.length > 0) {
-        const bandData = generatePathData(pts, 12 * (canvas.width / 1200), radii, scale, offX, offY), bCrns = bandData.corners;
+        const bCrns = generatePathData(pts, 12 * (canvas.width / 1200) / scale, radii, scale, offX, offY);
         currentSections.forEach((sec, sIdx) => {
             const cb = document.getElementById(`bandSec${sIdx}`);
             if (cb && cb.checked) {
@@ -264,56 +293,36 @@ function drawArrow(ctx, x1, y1, x2, y2, scaleFactor) {
     ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.lineTo(tipX - size * Math.cos(angle - Math.PI / 6), tipY - size * Math.sin(angle - Math.PI / 6)); ctx.lineTo(tipX - size * Math.cos(angle + Math.PI / 6), tipY - size * Math.sin(angle + Math.PI / 6)); ctx.closePath(); ctx.fillStyle = "#000"; ctx.fill();
 }
 
-function getDXFEntities(pts, radii, offset, layer, isClosed, edgeMask) {
-    const n = pts.length; let area = 0;
-    for (let i = 0; i < n; i++) area += pts[i].x * pts[(i + 1) % n].y - pts[(i + 1) % n].x * pts[i].y;
-    const CW = area > 0 ? 1 : -1, edges = [];
-    for (let i = 0; i < n; i++) {
-        const p1 = pts[i], p2 = pts[(i + 1) % n];
-        let vx = p2.x - p1.x, vy = p2.y - p1.y, len = Math.hypot(vx, vy) || 1; vx /= len; vy /= len;
-        let nx = vy * CW, ny = -vx * CW;
-        edges.push({ vx, vy, nx, ny, offL: { x1: p1.x + nx * offset, y1: p1.y + ny * offset, x2: p2.x + nx * offset, y2: p2.y + ny * offset } });
-    }
-    let corners = [];
-    for (let i = 0; i < n; i++) {
-        const ePrev = edges[(i + n - 1) % n], eNext = edges[i];
-        const C_off = intersectLines(ePrev.offL, eNext.offL), r = radii[i];
-        let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy, alpha = Math.atan2(cross, dot), isConvex = (cross * CW) > 0, R_off = isConvex ? r + offset : r - offset;
-        R_off = Math.max(0, R_off); if (r === 0) R_off = 0;
-        let arcStart = C_off, arcEnd = C_off, d = 0;
-        if (R_off > 0) {
-            d = R_off * Math.abs(Math.tan(alpha / 2));
-            arcStart = { x: C_off.x - ePrev.vx * d, y: C_off.y - ePrev.vy * d };
-            arcEnd = { x: C_off.x + eNext.vx * d, y: C_off.y + eNext.vy * d };
-        }
-        corners.push({ C_off, R_off, arcStart, arcEnd, cross });
-    }
-    let dxf = [];
-    const pushLine = (p1, p2) => {
-        if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.0001) return;
-        dxf.push("  0", "LINE", "  8", layer, " 10", p1.x.toFixed(4), " 20", p1.y.toFixed(4), " 11", p2.x.toFixed(4), " 21", p2.y.toFixed(4));
-    };
-    const pushArc = (cIdx) => {
-        let corner = corners[cIdx];
-        if (corner.R_off <= 0.0001) return;
-        let p1 = corner.arcStart, p2 = corner.arcEnd;
-        let ePrev = edges[(cIdx + n - 1) % n], n1 = { x1: p1.x, y1: p1.y, x2: p1.x - ePrev.vy, y2: p1.y + ePrev.vx };
-        let eNext = edges[cIdx], n2 = { x1: p2.x, y1: p2.y, x2: p2.x - eNext.vy, y2: p2.y + eNext.vx };
-        let center = intersectLines(n1, n2);
-        let startAng = Math.atan2(p1.y - center.y, p1.x - center.x) * 180 / Math.PI, endAng = Math.atan2(p2.y - center.y, p2.x - center.x) * 180 / Math.PI;
-        if (startAng < 0) startAng += 360; if (endAng < 0) endAng += 360;
-        let a1 = startAng, a2 = endAng;
-        if (corner.cross < 0) { a1 = endAng; a2 = startAng; }
-        dxf.push("  0", "ARC", "  8", layer, " 10", center.x.toFixed(4), " 20", center.y.toFixed(4), " 40", corner.R_off.toFixed(4), " 50", a1.toFixed(4), " 51", a2.toFixed(4));
-    };
+function getDXFPolyline(layer, corners, isClosed, sec = null) {
+    const n = corners.length;
+    let dxf = ["  0", "LWPOLYLINE", "100", "AcDbEntity", "  8", layer, "100", "AcDbPolyline"];
+    let pts = [];
+    
     if (isClosed) {
-        for (let i = 0; i < n; i++) { pushLine(corners[i].arcEnd, corners[(i + 1) % n].arcStart); pushArc((i + 1) % n); }
+        for (let i = 0; i < n; i++) {
+            let c = corners[i];
+            pts.push({ x: c.arcStart.x, y: c.arcStart.y, bulge: c.bulge });
+            if (Math.hypot(c.arcStart.x - c.arcEnd.x, c.arcStart.y - c.arcEnd.y) > 0.0001) pts.push({ x: c.arcEnd.x, y: c.arcEnd.y, bulge: 0 });
+            else pts[pts.length - 1].bulge = 0;
+        }
     } else {
-        for (let i = 0; i < edgeMask.length; i++) {
-            let edgeIdx = edgeMask[i]; pushLine(corners[edgeIdx].arcEnd, corners[(edgeIdx + 1) % n].arcStart);
-            if (i < edgeMask.length - 1) pushArc((edgeIdx + 1) % n);
+        for (let i = 0; i < sec.length; i++) {
+            let edgeIdx = sec[i], c1 = corners[edgeIdx], c2 = corners[(edgeIdx + 1) % n];
+            if (i === 0) pts.push({ x: c1.arcEnd.x, y: c1.arcEnd.y, bulge: 0 });
+            if (i < sec.length - 1) {
+                pts[pts.length - 1].bulge = 0; 
+                pts.push({ x: c2.arcStart.x, y: c2.arcStart.y, bulge: c2.bulge });
+                pts.push({ x: c2.arcEnd.x, y: c2.arcEnd.y, bulge: 0 });
+            } else {
+                pts.push({ x: c2.arcStart.x, y: c2.arcStart.y, bulge: 0 });
+            }
         }
     }
+    dxf.push(" 90", pts.length.toString(), " 70", isClosed ? "1" : "0", " 43", "0.0");
+    pts.forEach(p => {
+        dxf.push(" 10", p.x.toFixed(4), " 20", p.y.toFixed(4));
+        if (Math.abs(p.bulge) > 0.000001) dxf.push(" 42", p.bulge.toFixed(8));
+    });
     return dxf;
 }
 
@@ -327,19 +336,18 @@ function downloadPNG() {
 }
 
 function downloadDXF() {
-    const rawPts = getPoints(), radii = getRadii(), maxY = Math.max(...rawPts.map(p => p[1])), pts = rawPts.map(p => ({ x: p[0], y: maxY - p[1] })), n = pts.length;
-    let dxf = ["  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC", "  0", "SECTION", "  2", "TABLES", "  0", "TABLE", "  2", "LAYER", " 70", "2", "  0", "LAYER", "  2", "Shape", " 70", "0", " 62", "7", "  0", "LAYER", "  2", "Edge_Banding", " 70", "0", " 62", "1", "  0", "ENDTAB", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES"];
+    const rawPts = getPoints(), radii = getRadii(), maxY = Math.max(...rawPts.map(p => p[1])), pts = rawPts.map(p => [p[0], maxY - p[1]]), n = pts.length;
+    let dxf = ["  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1015", "  0", "ENDSEC", "  0", "SECTION", "  2", "TABLES", "  0", "TABLE", "  2", "LAYER", " 70", "2", "  0", "LAYER", "  2", "Shape", " 70", "0", " 62", "7", "  0", "LAYER", "  2", "Edge_Banding", " 70", "0", " 62", "1", "  0", "ENDTAB", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES"];
     
-    dxf = dxf.concat(getDXFEntities(pts, radii, 0, "Shape", true, null));
+    const baseCorners = generatePathData(pts, 0, radii);
+    dxf = dxf.concat(getDXFPolyline("Shape", baseCorners, true));
     
+    const bandCorners = generatePathData(pts, 12, radii);
     currentSections.forEach((sec, sIdx) => {
         const cb = document.getElementById(`bandSec${sIdx}`);
         if (cb && cb.checked) {
-            if (sec.length === n) { 
-                dxf = dxf.concat(getDXFEntities(pts, radii, 12, "Edge_Banding", true, null)); 
-            } else {
-                dxf = dxf.concat(getDXFEntities(pts, radii, 12, "Edge_Banding", false, sec));
-            }
+            if (sec.length === n) dxf = dxf.concat(getDXFPolyline("Edge_Banding", bandCorners, true)); 
+            else dxf = dxf.concat(getDXFPolyline("Edge_Banding", bandCorners, false, sec));
         }
     });
     
