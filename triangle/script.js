@@ -20,7 +20,12 @@ window.onload = () => {
         wrap.addEventListener('mouseenter', () => { highlightedCorner = parseInt(wrap.dataset.corner); drawTriangle(); });
         wrap.addEventListener('mouseleave', () => { highlightedCorner = -1; drawTriangle(); });
     });
-    window.addEventListener("resize", drawTriangle);
+    
+    // Replaced standard window.resize with ResizeObserver
+    new ResizeObserver(() => {
+        requestAnimationFrame(() => drawTriangle());
+    }).observe(document.getElementById("canvas"));
+    
     updateUI();
 };
 
@@ -134,7 +139,10 @@ function updateBandingUI(radii) {
         currentSections.forEach((sec, sIdx) => { const cb = document.getElementById(`bandSec${sIdx}`); let isChecked = cb ? cb.checked : true; sec.forEach(edge => oldEdgeBanded[edge] = isChecked); });
     }
     currentSections = sections;
-    let html = `<label style="display: flex; align-items: center; gap: 5px; font-weight: bold; margin-bottom: 5px;"><input type="checkbox" id="bandAll" checked> Band All</label>`;
+    
+    // Added grid-column: 1 / -1
+    let html = `<label style="grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; font-weight: bold; margin-bottom: 5px;"><input type="checkbox" id="bandAll" checked> Band All</label>`;
+    
     sections.forEach((sec, idx) => {
         let color = bandingColors[idx % bandingColors.length], names = sec.map(e => edgeNames[e]).join(" + "), shouldCheck = sec.some(edge => oldEdgeBanded[edge]);
         html += `<label style="display: flex; align-items: center; gap: 5px; border-left: 4px solid ${color}; padding-left: 8px;"><input type="checkbox" class="band-sec" id="bandSec${idx}" ${shouldCheck ? "checked" : ""}> ${names}</label>`;
