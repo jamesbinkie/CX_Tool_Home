@@ -24,6 +24,7 @@ window.onload = () => {
         wrap.addEventListener('mouseenter', () => { highlightedCorner = parseInt(wrap.dataset.corner); drawLShape(); });
         wrap.addEventListener('mouseleave', () => { highlightedCorner = -1; drawLShape(); });
     });
+    window.addEventListener("resize", drawLShape);
     updateUI();
 };
 
@@ -141,9 +142,13 @@ function updateBandingUI(radii) {
 
 function drawLShape(targetCanvas = null) {
     const canvas = targetCanvas || document.getElementById("canvas"), ctx = canvas.getContext("2d");
-    if (!targetCanvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!targetCanvas) {
+        const rect = canvas.getBoundingClientRect();
+        if (canvas.width !== rect.width || canvas.height !== rect.height) { canvas.width = rect.width; canvas.height = rect.height; }
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     const pts = getPoints(), radii = getRadii(), A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value);
-    const margin = canvas.width * 0.15, scale = Math.min((canvas.width - margin * 2) / A, (canvas.height - margin * 2) / B), offX = (canvas.width - A * scale) / 2, offY = (canvas.height - B * scale) / 2, n = 6;
+    const margin = Math.min(canvas.width, canvas.height) * 0.15, scale = Math.min((canvas.width - margin * 2) / A, (canvas.height - margin * 2) / B), offX = (canvas.width - A * scale) / 2, offY = (canvas.height - B * scale) / 2, n = 6;
     const baseData = generatePathData(pts, 0, radii, scale, offX, offY, B), crns = baseData.corners;
 
     ctx.beginPath(); ctx.moveTo(crns[0].arcStart.x, crns[0].arcStart.y);
@@ -152,15 +157,15 @@ function drawLShape(targetCanvas = null) {
         if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
         ctx.lineTo(crns[(i + 1) % n].arcStart.x, crns[(i + 1) % n].arcStart.y);
     }
-    ctx.closePath(); ctx.lineWidth = Math.max(2, 3 * (ctx.canvas.width / 900)); ctx.strokeStyle = "#000"; ctx.stroke();
+    ctx.closePath(); ctx.lineWidth = Math.max(2, 3 * (canvas.width / 1200)); ctx.strokeStyle = "#000"; ctx.stroke();
 
     const bandingControls = document.getElementById("dynamic-banding-controls");
     if (bandingControls && bandingControls.children.length > 0) {
-        const bandData = generatePathData(pts, 12 * (ctx.canvas.width/900), radii, scale, offX, offY, B), bCrns = bandData.corners;
+        const bandData = generatePathData(pts, 12 * (canvas.width / 1200), radii, scale, offX, offY, B), bCrns = bandData.corners;
         currentSections.forEach((sec, sIdx) => {
             const cb = document.getElementById(`bandSec${sIdx}`);
             if (cb && cb.checked) {
-                ctx.beginPath(); ctx.strokeStyle = bandingColors[sIdx % bandingColors.length]; ctx.lineWidth = 4 * (ctx.canvas.width/900);
+                ctx.beginPath(); ctx.strokeStyle = bandingColors[sIdx % bandingColors.length]; ctx.lineWidth = 5 * (canvas.width / 1200);
                 if (sec.length === n) {
                     ctx.moveTo(bCrns[0].arcStart.x, bCrns[0].arcStart.y);
                     for (let i = 0; i < n; i++) {
@@ -188,25 +193,25 @@ function drawLShape(targetCanvas = null) {
 }
 
 function drawLDimensions(ctx, scale, offX, offY, th) {
-    const scaleFactor = ctx.canvas.width / 900;
-    ctx.font = `bold ${Math.max(12, 18 * scaleFactor)}px Segoe UI, Arial`; ctx.fillStyle = "#000"; ctx.textAlign = "center";
+    const scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1;
+    ctx.font = `bold ${Math.max(12, 16 * scaleFactor)}px Segoe UI, Arial`; ctx.fillStyle = "#000"; ctx.textAlign = "center";
     const A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value), C = parseFloat(document.getElementById("legW").value), D = parseFloat(document.getElementById("legH").value), isLeft = document.getElementById("type").value === "left";
     
     const drawDim = (x1, y1, x2, y2, label) => {
-        const angle = Math.atan2(y2 - y1, x2 - x1), textWidth = ctx.measureText(label).width + (25 * scaleFactor), mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        const angle = Math.atan2(y2 - y1, x2 - x1), textWidth = ctx.measureText(label).width + (15 * scaleFactor), mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
         ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(mx - Math.cos(angle)*(textWidth/2), my - Math.sin(angle)*(textWidth/2)); ctx.moveTo(mx + Math.cos(angle)*(textWidth/2), my + Math.sin(angle)*(textWidth/2)); ctx.lineTo(x2, y2);
         ctx.strokeStyle = "#444"; ctx.lineWidth = 1.5 * scaleFactor; ctx.stroke();
         const s = 10 * scaleFactor; ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - s*Math.cos(angle-Math.PI/6), y2 - s*Math.sin(angle-Math.PI/6)); ctx.lineTo(x2 - s*Math.cos(angle+Math.PI/6), y2 - s*Math.sin(angle+Math.PI/6)); ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
-        ctx.fillText(label, mx, my + (6 * scaleFactor));
+        ctx.fillText(label, mx, my + (5 * scaleFactor));
     };
     
     const off = 55 * scaleFactor;
     drawDim(offX, offY + th*scale + off, offX + A*scale, offY + th*scale + off, `A: ${A}mm`);
-    const bX = isLeft ? offX + A*scale + (85 * scaleFactor) : offX - (85 * scaleFactor);
+    const bX = isLeft ? offX + A*scale + (55 * scaleFactor) : offX - (55 * scaleFactor);
     drawDim(bX, offY + th*scale, bX, offY, `B: ${B}mm`);
     const cX = isLeft ? offX + A*scale : offX, cX2 = isLeft ? offX + A*scale - C*scale : offX + C*scale;
-    drawDim(cX, offY - (35 * scaleFactor), cX2, offY - (35 * scaleFactor), `C: ${C}mm`);
-    const dX = isLeft ? offX - (85 * scaleFactor) : offX + A*scale + (85 * scaleFactor);
+    drawDim(cX, offY - (25 * scaleFactor), cX2, offY - (25 * scaleFactor), `C: ${C}mm`);
+    const dX = isLeft ? offX - (55 * scaleFactor) : offX + A*scale + (55 * scaleFactor);
     drawDim(dX, offY + th*scale, dX, offY + th*scale - D*scale, `D: ${D}mm`);
 }
 
@@ -218,8 +223,6 @@ function getDXFPolyline(layer, vertices, isClosed) {
 
 function computeDXFVertices(pts, radii) {
     const n = pts.length, dxfCorners = [];
-    let area = 0; for (let i = 0; i < n; i++) area += pts[i].x * pts[(i + 1) % n].y - pts[(i + 1) % n].x * pts[i].y;
-    const CW = area > 0 ? 1 : -1;
     for (let i = 0; i < n; i++) {
         const p0 = pts[(i + n - 1) % n], p1 = pts[i], p2 = pts[(i + 1) % n], r = radii[i];
         let v1x = p1.x - p0.x, v1y = p1.y - p0.y, l1 = Math.hypot(v1x, v1y) || 1; v1x /= l1; v1y /= l1;
@@ -252,10 +255,10 @@ function downloadDXF() {
         if (cb && cb.checked) {
             if (sec.length === n) { dxf = dxf.concat(getDXFPolyline("Edge_Banding", shapePts, true)); } 
             else {
-                let secPts = [], firstEdge = sec[0], prevCorner = (firstEdge + n - 1) % n;
-                secPts.push(dxfCorners[prevCorner].end);
+                let secPts = [], firstEdge = sec[0];
+                secPts.push(dxfCorners[firstEdge].end);
                 for (let i = 0; i < sec.length; i++) {
-                    let c = dxfCorners[(sec[i] + 1) % n];
+                    let nextCorner = (sec[i] + 1) % n, c = dxfCorners[nextCorner];
                     secPts.push(c.start);
                     if (i < sec.length - 1 && (c.start.x !== c.end.x || c.start.y !== c.end.y)) secPts.push(c.end);
                 }
