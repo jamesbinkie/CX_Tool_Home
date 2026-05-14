@@ -347,42 +347,61 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
     let dxf = [];
     const n = corners.length;
     
+    let area = 0;
+    for(let i=0; i<n; i++) {
+        let p1 = corners[i].C_off, p2 = corners[(i+1)%n].C_off;
+        area += p1.x * p2.y - p2.x * p1.y;
+    }
+    const isCW = area < 0;
+
     function getCornerEndpoints(c) {
         if (c.R_off <= 0.001) return { start: c.C_off, end: c.C_off };
-        let cx = parseFloat(c.arcCenter.x.toFixed(6));
-        let cy = parseFloat(c.arcCenter.y.toFixed(6));
-        let r  = parseFloat(c.R_off.toFixed(6));
-        let a1 = parseFloat(c.dxfStart.toFixed(6)) * Math.PI / 180;
-        let a2 = parseFloat(c.dxfEnd.toFixed(6)) * Math.PI / 180;
+        let cx = parseFloat(c.arcCenter.x.toFixed(8)), cy = parseFloat(c.arcCenter.y.toFixed(8));
+        let r  = parseFloat(c.R_off.toFixed(8));
+        let a1 = parseFloat(c.dxfStart.toFixed(8)) * Math.PI / 180;
+        let a2 = parseFloat(c.dxfEnd.toFixed(8)) * Math.PI / 180;
         
         let p1 = { x: cx + r * Math.cos(a1), y: cy + r * Math.sin(a1) };
         let p2 = { x: cx + r * Math.cos(a2), y: cy + r * Math.sin(a2) };
-        
-        let d1Start = Math.hypot(p1.x - c.arcStart.x, p1.y - c.arcStart.y);
-        let d1End = Math.hypot(p1.x - c.arcEnd.x, p1.y - c.arcEnd.y);
-        return (d1Start < d1End) ? { start: p1, end: p2 } : { start: p2, end: p1 };
+        return { start: p1, end: p2 };
     }
 
     const pushLine = (p1, p2) => {
         if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.001) return;
-        dxf.push("  0", "LINE", "  8", layer, " 10", p1.x.toFixed(6), " 20", p1.y.toFixed(6), " 11", p2.x.toFixed(6), " 21", p2.y.toFixed(6));
+        dxf.push("  0", "LINE", "  8", layer, " 10", p1.x.toFixed(8), " 20", p1.y.toFixed(8), " 11", p2.x.toFixed(8), " 21", p2.y.toFixed(8));
     };
     const pushArc = (c) => {
         if (c.R_off <= 0.001) return;
-        dxf.push("  0", "ARC", "  8", layer, " 10", c.arcCenter.x.toFixed(6), " 20", c.arcCenter.y.toFixed(6), " 40", c.R_off.toFixed(6), " 50", c.dxfStart.toFixed(6), " 51", c.dxfEnd.toFixed(6));
+        dxf.push("  0", "ARC", "  8", layer, " 10", c.arcCenter.x.toFixed(8), " 20", c.arcCenter.y.toFixed(8), " 40", c.R_off.toFixed(8), " 50", c.dxfStart.toFixed(8), " 51", c.dxfEnd.toFixed(8));
     };
 
     if (isClosed) {
-        for (let i = 0; i < n; i++) {
-            let c1 = corners[i], c2 = corners[(i + 1) % n];
-            pushArc(c1);
-            pushLine(getCornerEndpoints(c1).end, getCornerEndpoints(c2).start);
+        if (isCW) {
+            for (let i = n - 1; i >= 0; i--) {
+                let c1 = corners[i], cPrev = corners[(i + n - 1) % n];
+                pushArc(c1);
+                pushLine(getCornerEndpoints(c1).end, getCornerEndpoints(cPrev).start);
+            }
+        } else {
+            for (let i = 0; i < n; i++) {
+                let c1 = corners[i], c2 = corners[(i + 1) % n];
+                pushArc(c1);
+                pushLine(getCornerEndpoints(c1).end, getCornerEndpoints(c2).start);
+            }
         }
     } else {
-        for (let i = 0; i < sec.length; i++) {
-            let edgeIdx = sec[i], c1 = corners[edgeIdx], c2 = corners[(edgeIdx + 1) % n];
-            pushLine(getCornerEndpoints(c1).end, getCornerEndpoints(c2).start);
-            if (i < sec.length - 1) pushArc(c2);
+        if (isCW) {
+            for (let i = sec.length - 1; i >= 0; i--) {
+                let edgeIdx = sec[i], c1 = corners[(edgeIdx + 1) % n], c2 = corners[edgeIdx];
+                pushLine(getCornerEndpoints(c1).end, getCornerEndpoints(c2).start);
+                if (i > 0) pushArc(c2);
+            }
+        } else {
+            for (let i = 0; i < sec.length; i++) {
+                let edgeIdx = sec[i], c1 = corners[edgeIdx], c2 = corners[(edgeIdx + 1) % n];
+                pushLine(getCornerEndpoints(c1).end, getCornerEndpoints(c2).start);
+                if (i < sec.length - 1) pushArc(c2);
+            }
         }
     }
     return dxf;
