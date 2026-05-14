@@ -339,8 +339,7 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     return corners;
 }
 
-// --- DXF: continuous closed path + minor arcs only ---
-
+// DXF entities from corners (Shape or Edge_Banding)
 function getDXFEntities(corners, layer, isClosed, sec = null) {
     let dxf = [];
     const n = corners.length;
@@ -369,12 +368,10 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
         if (aStart < 0) aStart += 360;
         if (aEnd   < 0) aEnd   += 360;
 
-        // Force minor arc (short way round) so internal fillet is 6→9, not the big sweep
         let s = aStart;
         let e = aEnd;
         let sweep = (e - s + 360) % 360;
         if (sweep > 180) {
-            // swap to take the other direction
             const tmp = s;
             s = e;
             e = tmp;
@@ -392,7 +389,6 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
     };
 
     if (isClosed) {
-        // Closed: ARC(c0) then [LINE+ARC] around, using arcStart/arcEnd directly
         if (n > 0) pushArc(corners[0]);
 
         for (let i = 0; i < n; i++) {
@@ -409,7 +405,6 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
             }
         }
     } else {
-        // Open banding section: still use arcStart/arcEnd, but only along selected edges
         for (let i = 0; i < sec.length; i++) {
             let edgeIdx = sec[i];
             let c  = corners[edgeIdx];
@@ -418,11 +413,7 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
             const p1 = (c.R_off  > 0) ? c.arcEnd   : c.C_off;
             const p2 = (nx.R_off > 0) ? nx.arcStart: nx.C_off;
 
-            if (i === 0) {
-                pushLine(p1, p2);
-            } else {
-                pushLine(p1, p2);
-            }
+            pushLine(p1, p2);
 
             if (i < sec.length - 1) {
                 let cornerIdx = (edgeIdx + 1) % n;
@@ -572,7 +563,7 @@ function drawLShape(targetCanvas = null) {
                         let c = bCrns[(edgeIdx + 1) % n];
                         ctx.lineTo(c.arcStart.x, c.arcStart.y);
                         if (idx < sec.length - 1) {
-                            if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.R_off);
+                            if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off);
                             else ctx.lineTo(c.C_off.x, c.C_off.y);
                         }
                     });
@@ -671,14 +662,35 @@ function downloadDXF() {
     const radii = getRadii();
     const n = pts.length;
 
+    // Build geometry once
+    const baseCorners = generatePathData(pts, 0, radii);
+    const bandCorners = generatePathData(pts, 12, radii);
+
+    // Collect all entities that will live inside the BLOCK
+    let blockEntities = [];
+    blockEntities = blockEntities.concat(getDXFEntities(baseCorners, "Shape", true, null));
+
+    currentSections.forEach((sec, sIdx) => {
+        const cb = document.getElementById(`bandSec${sIdx}`);
+        if (cb && cb.checked) {
+            if (sec.length === n) {
+                blockEntities = blockEntities.concat(getDXFEntities(bandCorners, "Edge_Banding", true, null));
+            } else {
+                blockEntities = blockEntities.concat(getDXFEntities(bandCorners, "Edge_Banding", false, sec));
+            }
+        }
+    });
+
     let dxf = [
         "  0", "SECTION",
         "  2", "HEADER",
         "  9", "$ACADVER",
         "  1", "AC1009",
         "  0", "ENDSEC",
+
         "  0", "SECTION",
         "  2", "TABLES",
+
         "  0", "TABLE",
         "  2", "LTYPE",
         " 70", "1",
@@ -690,41 +702,60 @@ function downloadDXF() {
         " 73", "0",
         " 40", "0.0",
         "  0", "ENDTAB",
+
         "  0", "TABLE",
         "  2", "LAYER",
         " 70", "2",
+
         "  0", "LAYER",
         "  2", "Shape",
         " 70", "0",
         " 62", "7",
         "  6", "CONTINUOUS",
+
         "  0", "LAYER",
         "  2", "Edge_Banding",
         " 70", "0",
         " 62", "1",
         "  6", "CONTINUOUS",
+
         "  0", "ENDTAB",
         "  0", "ENDSEC",
+
+        // BLOCKS section with ShapeBlock
         "  0", "SECTION",
-        "  2", "ENTITIES"
+        "  2", "BLOCKS",
+
+        "  0", "BLOCK",
+        "  8", "0",
+        "  2", "ShapeBlock",
+        " 70", "0",
+        " 10", "0.0",
+        " 20", "0.0",
+        " 30", "0.0"
     ];
 
-    const baseCorners = generatePathData(pts, 0, radii);
-    dxf = dxf.concat(getDXFEntities(baseCorners, "Shape", true, null));
+    // Add all geometry into the BLOCK
+    dxf = dxf.concat(blockEntities);
 
-    const bandCorners = generatePathData(pts, 12, radii);
-    currentSections.forEach((sec, sIdx) => {
-        const cb = document.getElementById(`bandSec${sIdx}`);
-        if (cb && cb.checked) {
-            if (sec.length === n) {
-                dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", true, null));
-            } else {
-                dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", false, sec));
-            }
-        }
-    });
+    dxf.push(
+        "  0", "ENDBLK",
+        "  0", "ENDSEC",
 
-    dxf.push("  0", "ENDSEC", "  0", "EOF");
+        // ENTITIES section: single INSERT of ShapeBlock
+        "  0", "SECTION",
+        "  2", "ENTITIES",
+
+        "  0", "INSERT",
+        "  8", "0",
+        "  2", "ShapeBlock",
+        " 10", "0.0",
+        " 20", "0.0",
+        " 30", "0.0",
+
+        "  0", "ENDSEC",
+        "  0", "EOF"
+    );
 
     const blob = new Blob([dxf.join("\r\n")], { type: "application/dxf" });
     const link = document.createElement("a");
