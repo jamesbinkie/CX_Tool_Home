@@ -4,7 +4,7 @@ const bandingColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6", "#
 
 function getEdgeNames() {
     const isLeft = document.getElementById("type").value === "left";
-    return isLeft ? ["Bottom", "Left Leg", "Inner Top", "Inner Right", "Top", "Right Side"] : ["Bottom", "Right Leg", "Inner Top", "Inner Left", "Top", "Left Side"];
+    return isLeft ? ["Bottom", "Right Side", "Top", "Inner Right", "Inner Top", "Left Side"] : ["Bottom", "Right Leg", "Inner Top", "Inner Left", "Top", "Left Side"];
 }
 
 window.onload = () => {
@@ -32,7 +32,14 @@ window.onload = () => {
     updateUI();
 };
 
-function updateUI() { refreshHintsAndWarnings(); updateBandingUI(getRadii()); validateRadii(); drawLShape(); }
+function updateUI() { 
+    const isLeft = document.getElementById("type").value === "left";
+    document.querySelector('[data-corner="2"] label').textContent = isLeft ? "Corner 3 (Mid L)" : "Corner 3 (Mid R)";
+    refreshHintsAndWarnings(); 
+    updateBandingUI(getRadii()); 
+    validateRadii(); 
+    drawLShape(); 
+}
 
 function validateAndClamp() {
     const minVal = 200, sheetW = 2400, sheetH = 1200, twIn = document.getElementById("totalW"), thIn = document.getElementById("totalH"), lwIn = document.getElementById("legW"), lhIn = document.getElementById("legH");
@@ -43,7 +50,11 @@ function validateAndClamp() {
     twIn.value = Math.round(tw); thIn.value = Math.round(th); lwIn.value = Math.round(lw); lhIn.value = Math.round(lh);
 }
 
-function getRadii() { return [parseFloat(document.getElementById("rad0").value) || 0, parseFloat(document.getElementById("rad1").value) || 0, parseFloat(document.getElementById("rad2").value) || 0, parseFloat(document.getElementById("rad3").value) || 0, parseFloat(document.getElementById("rad4").value) || 0, parseFloat(document.getElementById("rad5").value) || 0]; }
+function getRadii() { 
+    const isLeft = document.getElementById("type").value === "left";
+    const map = isLeft ? [0, 1, 4, 5, 3, 2] : [0, 1, 2, 3, 4, 5];
+    return map.map(idx => parseFloat(document.getElementById(`rad${idx}`).value) || 0); 
+}
 
 function isCornerBanded(i, n) {
     let isBanded = false;
@@ -60,12 +71,18 @@ function validateRadii() {
     const radii = getRadii();
     const pts = getPoints();
     const n = pts.length;
+    const isLeft = document.getElementById("type").value === "left";
     
     const C = parseFloat(document.getElementById("legW").value) || 300;
     const D = parseFloat(document.getElementById("legH").value) || 300;
     
-    let maxR3 = Math.min(C, D) - 0.1;
-    if (radii[3] > maxR3) { radii[3] = Math.floor(maxR3); changed = true; }
+    let internalIdx = 3; 
+    let maxRInternal = Math.min(C, D) - 0.1;
+    if (radii[internalIdx] > maxRInternal) { radii[internalIdx] = Math.floor(maxRInternal); changed = true; }
+    
+    let outerIdx = isLeft ? 1 : 0;
+    let maxROuter = (C + D) - Math.sqrt(2 * C * D);
+    if (radii[outerIdx] > maxROuter) { radii[outerIdx] = Math.floor(maxROuter); changed = true; }
     
     for (let i = 0; i < n; i++) {
         if (isCornerBanded(i, n) && radii[i] > 0 && radii[i] < 50) { 
@@ -107,7 +124,8 @@ function validateRadii() {
     }
 
     if (changed || conflict) {
-        for (let i = 0; i < n; i++) document.getElementById(`rad${i}`).value = Math.floor(radii[i]);
+        const map = isLeft ? [0, 1, 5, 4, 2, 3] : [0, 1, 2, 3, 4, 5];
+        for (let i = 0; i < n; i++) document.getElementById(`rad${map[i]}`).value = Math.floor(radii[i]);
     }
     
     let bandingBroken = false;
@@ -135,12 +153,10 @@ function getPoints() {
     return [[0,0], [A,0], [A,D], [C,D], [C,B], [0,B]];
 }
 
-function intersectLines(p1, p2, p3, p4) {
-    let denom = (p1.x - p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x - p4.x);
-    if (Math.abs(denom) < 0.0001) return {x: p2.x, y: p2.y};
-    let x = ((p1.x*p2.y - p1.y*p2.x)*(p3.x - p4.x) - (p1.x - p2.x)*(p3.x*p4.y - p3.y*p4.x)) / denom;
-    let y = ((p1.x*p2.y - p1.y*p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x*p4.y - p3.y*p4.x)) / denom;
-    return {x, y};
+function intersectLines(l1, l2) {
+    const denom = (l1.x1 - l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 - l2.x2);
+    if (Math.abs(denom) < 0.0001) return { x: l1.x2, y: l1.y2 };
+    return { x: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.x1 - l2.x2) - (l1.x1 - l1.x2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom, y: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom };
 }
 
 function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
@@ -151,27 +167,22 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     for (let i = 0; i < n; i++) {
         const p1 = sPts[i], p2 = sPts[(i + 1) % n];
         let vx = p2.x - p1.x, vy = p2.y - p1.y, len = Math.hypot(vx, vy) || 1; vx /= len; vy /= len;
-        let nx = vy, ny = -vx; 
-        edges.push({
-            vx, vy, nx, ny,
-            off1: { x: p1.x + nx * offset * scale, y: p1.y + ny * offset * scale },
-            off2: { x: p2.x + nx * offset * scale, y: p2.y + ny * offset * scale }
-        });
+        let nx = vy * CW, ny = -vx * CW;
+        edges.push({ vx, vy, nx, ny, offL: { x1: p1.x + nx * offset * scale, y1: p1.y + ny * offset * scale, x2: p2.x + nx * offset * scale, y2: p2.y + ny * offset * scale } });
     }
     
     let rawCorners = [];
     for (let i = 0; i < n; i++) {
         const ePrev = edges[(i + n - 1) % n], eNext = edges[i];
-        let C_off = intersectLines(ePrev.off1, ePrev.off2, eNext.off1, eNext.off2);
-        let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx;
-        let dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy;
+        const C_off = intersectLines(ePrev.offL, eNext.offL);
+        let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy;
         let alpha = Math.atan2(cross, dot);
-        let isConvex = cross > 0;
+        let isConvex = (cross * CW) > 0;
         let r = radii[i] * scale;
         let R_off = isConvex ? r + offset * scale : r - offset * scale;
         R_off = Math.max(0, R_off); if (r === 0) R_off = 0;
         let d = R_off > 0 ? R_off * Math.abs(Math.tan(alpha / 2)) : 0;
-        rawCorners.push({ C_off, R_off, d, alpha, cross, isConvex, ePrev, eNext });
+        rawCorners.push({ C_off, R_off, d, alpha, cross, isConvex });
     }
     
     for (let i = 0; i < n; i++) {
@@ -188,19 +199,17 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     
     const corners = [];
     for (let i = 0; i < n; i++) {
-        let rc = rawCorners[i];
-        let arcStart = { x: rc.C_off.x - rc.ePrev.vx * rc.d, y: rc.C_off.y - rc.ePrev.vy * rc.d };
-        let arcEnd = { x: rc.C_off.x + rc.eNext.vx * rc.d, y: rc.C_off.y + rc.eNext.vy * rc.d };
-        let bulge = rc.R_off > 0 ? Math.tan(rc.alpha / 4) : 0;
-        
+        let rc = rawCorners[i], ePrev = edges[(i + n - 1) % n], eNext = edges[i];
+        let arcStart = { x: rc.C_off.x - ePrev.vx * rc.d, y: rc.C_off.y - ePrev.vy * rc.d };
+        let arcEnd = { x: rc.C_off.x + eNext.vx * rc.d, y: rc.C_off.y + eNext.vy * rc.d };
         let arcMid = { x: rc.C_off.x, y: rc.C_off.y };
+        let bulge = rc.R_off > 0 ? Math.tan(rc.alpha / 4) : 0;
+
         if (rc.R_off > 0) {
-            let mx = (arcStart.x + arcEnd.x) / 2;
-            let my = (arcStart.y + arcEnd.y) / 2;
-            let arcCenter = { x: arcStart.x - rc.ePrev.nx * rc.R_off * (rc.isConvex?1:-1), y: arcStart.y - rc.ePrev.ny * rc.R_off * (rc.isConvex?1:-1) };
-            let vx = mx - arcCenter.x, vy = my - arcCenter.y;
-            let vL = Math.hypot(vx, vy) || 1;
-            arcMid = { x: arcCenter.x + (vx/vL)*rc.R_off, y: arcCenter.y + (vy/vL)*rc.R_off };
+            let sign = Math.sign(rc.cross) || 1, nx = -ePrev.vy * sign, ny = ePrev.vx * sign;
+            let cx = arcStart.x + nx * rc.R_off, cy = arcStart.y + ny * rc.R_off;
+            let vX = rc.C_off.x - cx, vY = rc.C_off.y - cy, vLen = Math.hypot(vX, vY) || 1;
+            arcMid = { x: cx + (vX / vLen) * rc.R_off, y: cy + (vY / vLen) * rc.R_off };
         }
         corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, bulge });
     }
@@ -328,8 +337,13 @@ function drawLShape(targetCanvas = null) {
     
     let screenPts = pts.map(p => [p[0], B - p[1]]);
     drawLDimensions(ctx, screenPts, scale, offX, offY, B);
+    
     if (highlightedCorner !== -1 && !targetCanvas) {
-        const cp = crns[highlightedCorner]; ctx.beginPath(); 
+        const isLeft = document.getElementById("type").value === "left";
+        const map = isLeft ? [0, 1, 4, 5, 3, 2] : [0, 1, 2, 3, 4, 5];
+        let geoIndex = map.indexOf(highlightedCorner);
+
+        const cp = crns[geoIndex]; ctx.beginPath(); 
         const trX = x => x * scale + offX;
         const trY = y => (B - y) * scale + offY;
         ctx.arc(trX(cp.arcMid.x), trY(cp.arcMid.y), 20, 0, Math.PI * 2); 
@@ -354,7 +368,8 @@ function drawLDimensions(ctx, pts, scale, offX, offY, th) {
     drawDim(offX, offY + th*scale + off, offX + A*scale, offY + th*scale + off, `A: ${A}mm`);
     const bX = isLeft ? offX + A*scale + (55 * scaleFactor) : offX - (55 * scaleFactor);
     drawDim(bX, offY + th*scale, bX, offY, `B: ${B}mm`);
-    const cX = isLeft ? offX + A*scale : offX, cX2 = isLeft ? offX + A*scale - C*scale : offX + C*scale;
+    const cX = isLeft ? offX + A*scale - C*scale : offX; 
+    const cX2 = isLeft ? offX + A*scale : offX + C*scale;
     drawDim(cX, offY - (25 * scaleFactor), cX2, offY - (25 * scaleFactor), `C: ${C}mm`);
     const dX = isLeft ? offX - (55 * scaleFactor) : offX + A*scale + (55 * scaleFactor);
     drawDim(dX, offY + th*scale, dX, offY + th*scale - D*scale, `D: ${D}mm`);
