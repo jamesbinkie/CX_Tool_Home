@@ -55,7 +55,7 @@ function validateAndClamp() {
 
 function getRadii() { 
     const isLeft = document.getElementById("type").value === "left";
-    const map = isLeft ? [1, 0, 2, 3, 5, 4] : [0, 1, 2, 3, 4, 5];
+    const map = isLeft ? [1, 0, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5];
     return map.map(idx => parseFloat(document.getElementById(`rad${idx}`).value) || 0); 
 }
 
@@ -126,7 +126,7 @@ function validateRadii() {
     }
 
     if (changed || conflict) {
-        const map = isLeft ? [1, 0, 2, 3, 5, 4] : [0, 1, 2, 3, 4, 5];
+        const map = isLeft ? [1, 0, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5];
         for (let i = 0; i < n; i++) document.getElementById(`rad${map[i]}`).value = Math.floor(radii[i]);
     }
     
@@ -165,14 +165,11 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     const n = pts.length; let area = 0;
     const sPts = pts.map(p => ({ x: p[0] * scale + offX, y: p[1] * scale + offY }));
     for (let i = 0; i < n; i++) area += sPts[i].x * sPts[(i + 1) % n].y - sPts[(i + 1) % n].x * sPts[i].y;
-    const isCCW = area > 0;
-    
-    const edges = [];
+    const CW = area > 0 ? 1 : -1, edges = [];
     for (let i = 0; i < n; i++) {
         const p1 = sPts[i], p2 = sPts[(i + 1) % n];
         let vx = p2.x - p1.x, vy = p2.y - p1.y, len = Math.hypot(vx, vy) || 1; vx /= len; vy /= len;
-        let nx = isCCW ? vy : -vy;
-        let ny = isCCW ? -vx : vx;
+        let nx = vy * CW, ny = -vx * CW;
         edges.push({ vx, vy, nx, ny, offL: { x1: p1.x + nx * offset * scale, y1: p1.y + ny * offset * scale, x2: p2.x + nx * offset * scale, y2: p2.y + ny * offset * scale } });
     }
     
@@ -182,12 +179,13 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         const C_off = intersectLines(ePrev.offL, eNext.offL);
         let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy;
         let alpha = Math.atan2(cross, dot);
-        let isConvex = isCCW ? (cross > 0) : (cross < 0);
+        let isConvex = (cross * CW) > 0;
         let r = radii[i] * scale;
         let R_off = isConvex ? r + offset * scale : r - offset * scale;
         R_off = Math.max(0, R_off); if (r === 0) R_off = 0;
         let d = R_off > 0 ? R_off * Math.abs(Math.tan(alpha / 2)) : 0;
-        rawCorners.push({ C_off, R_off, d, alpha, cross, isConvex });
+        let bulge = Math.tan(alpha / 4);
+        rawCorners.push({ C_off, R_off, d, alpha, cross, isConvex, bulge });
     }
     
     for (let i = 0; i < n; i++) {
@@ -207,89 +205,46 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         let rc = rawCorners[i], ePrev = edges[(i + n - 1) % n], eNext = edges[i];
         let arcStart = { x: rc.C_off.x - ePrev.vx * rc.d, y: rc.C_off.y - ePrev.vy * rc.d };
         let arcEnd = { x: rc.C_off.x + eNext.vx * rc.d, y: rc.C_off.y + eNext.vy * rc.d };
-        let arcMid = { x: rc.C_off.x, y: rc.C_off.y }, arcCenter = { x: rc.C_off.x, y: rc.C_off.y };
-        let dxfStart = 0, dxfEnd = 0, drawCCW = true;
+        let arcMid = { x: rc.C_off.x, y: rc.C_off.y };
+        let bulge = 0;
 
         if (rc.R_off > 0) {
-            let inNx = isCCW ? -ePrev.vy : ePrev.vy;
-            let inNy = isCCW ? ePrev.vx : -ePrev.vx;
-
-            if (rc.isConvex) {
-                arcCenter = { x: arcStart.x + inNx * rc.R_off, y: arcStart.y + inNy * rc.R_off };
-            } else {
-                arcCenter = { x: arcStart.x - inNx * rc.R_off, y: arcStart.y - inNy * rc.R_off };
-            }
-
-            let aStart = Math.atan2(arcStart.y - arcCenter.y, arcStart.x - arcCenter.x) * 180 / Math.PI;
-            let aEnd   = Math.atan2(arcEnd.y - arcCenter.y, arcEnd.x - arcCenter.x) * 180 / Math.PI;
-            if (aStart < 0) aStart += 360; if (aEnd < 0) aEnd += 360;
-
-            drawCCW = isCCW ? rc.isConvex : !rc.isConvex;
-            
-            if (drawCCW) {
-                dxfStart = aStart; dxfEnd = aEnd;
-            } else {
-                dxfStart = aEnd; dxfEnd = aStart;
-            }
-
-            let aMidCCW = (dxfStart < dxfEnd) ? (dxfStart + dxfEnd) / 2 : (dxfStart + dxfEnd + 360) / 2;
-            arcMid = {
-                x: arcCenter.x + rc.R_off * Math.cos(aMidCCW * Math.PI / 180),
-                y: arcCenter.y + rc.R_off * Math.sin(aMidCCW * Math.PI / 180)
-            };
+            let sign = Math.sign(rc.cross) || 1, nx = -ePrev.vy * sign, ny = ePrev.vx * sign;
+            let cx = arcStart.x + nx * rc.R_off, cy = arcStart.y + ny * rc.R_off;
+            let vX = rc.C_off.x - cx, vY = rc.C_off.y - cy, vLen = Math.hypot(vX, vY) || 1;
+            arcMid = { x: cx + (vX / vLen) * rc.R_off, y: cy + (vY / vLen) * rc.R_off };
+            bulge = (rc.isConvex ? 1 : -1) * CW * rc.bulge;
         }
-        corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, arcCenter, dxfStart, dxfEnd, drawCCW });
+        corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, bulge });
     }
     return corners;
 }
 
-function getDXFEntities(corners, layer, isClosed, sec = null) {
-    let dxf = [];
+function getDXFPolyline(layer, corners, isClosed, sec = null) {
     const n = corners.length;
-
-    function getExactPoints(c) {
-        if (c.R_off <= 0.001) return { enter: c.C_off, exit: c.C_off };
-        
-        let cx = parseFloat(c.arcCenter.x.toFixed(6));
-        let cy = parseFloat(c.arcCenter.y.toFixed(6));
-        let r  = parseFloat(c.R_off.toFixed(6));
-        let aStart = parseFloat(c.dxfStart.toFixed(6)) * Math.PI / 180;
-        let aEnd   = parseFloat(c.dxfEnd.toFixed(6)) * Math.PI / 180;
-
-        let ptA = { x: cx + r * Math.cos(aStart), y: cy + r * Math.sin(aStart) };
-        let ptB = { x: cx + r * Math.cos(aEnd),   y: cy + r * Math.sin(aEnd) };
-
-        if (c.drawCCW) return { enter: ptA, exit: ptB };
-        return { enter: ptB, exit: ptA };
-    }
-
-    const pushLine = (p1, p2) => {
-        if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.001) return;
-        dxf.push("  0", "LINE", "  8", layer, " 10", p1.x.toFixed(6), " 20", p1.y.toFixed(6), " 11", p2.x.toFixed(6), " 21", p2.y.toFixed(6));
-    };
+    let dxf = ["  0", "POLYLINE", "  8", layer, " 66", "1", " 70", isClosed ? "1" : "0"];
+    let pts = [];
     
-    const pushArc = (c) => {
-        if (c.R_off <= 0.001) return;
-        dxf.push("  0", "ARC", "  8", layer, " 10", c.arcCenter.x.toFixed(6), " 20", c.arcCenter.y.toFixed(6), " 40", c.R_off.toFixed(6), " 50", c.dxfStart.toFixed(6), " 51", c.dxfEnd.toFixed(6));
-    };
-
     if (isClosed) {
         for (let i = 0; i < n; i++) {
-            let c1 = corners[i], c2 = corners[(i + 1) % n];
-            pushArc(c1);
-            pushLine(getExactPoints(c1).exit, getExactPoints(c2).enter);
+            let c = corners[i];
+            pts.push({ x: c.arcStart.x, y: c.arcStart.y, bulge: c.R_off > 0 ? c.bulge : 0 });
+            if (c.R_off > 0) pts.push({ x: c.arcEnd.x, y: c.arcEnd.y, bulge: 0 });
         }
     } else {
         for (let i = 0; i < sec.length; i++) {
             let edgeIdx = sec[i], c1 = corners[edgeIdx], c2 = corners[(edgeIdx + 1) % n];
-            if (i === 0) pushLine(getExactPoints(c1).exit, getExactPoints(c2).enter);
-            if (i < sec.length - 1) {
-                pushArc(c2);
-                let c3 = corners[(edgeIdx + 2) % n];
-                pushLine(getExactPoints(c2).exit, getExactPoints(c3).enter);
-            }
+            if (i === 0) pts.push({ x: c1.arcEnd.x, y: c1.arcEnd.y, bulge: 0 });
+            let useBulge = (i < sec.length - 1 && c2.R_off > 0);
+            pts.push({ x: c2.arcStart.x, y: c2.arcStart.y, bulge: useBulge ? c2.bulge : 0 });
+            if (useBulge) pts.push({ x: c2.arcEnd.x, y: c2.arcEnd.y, bulge: 0 });
         }
     }
+    
+    pts.forEach(p => {
+        dxf.push("  0", "VERTEX", "  8", layer, " 10", p.x.toFixed(4), " 20", p.y.toFixed(4), " 42", (p.bulge || 0).toFixed(8));
+    });
+    dxf.push("  0", "SEQEND", "  8", layer);
     return dxf;
 }
 
@@ -373,7 +328,7 @@ function drawLShape(targetCanvas = null) {
     drawLDimensions(ctx, scale, offX, offY, B);
     if (highlightedCorner !== -1 && !targetCanvas) {
         const isLeft = document.getElementById("type").value === "left";
-        const map = isLeft ? [1, 0, 2, 3, 5, 4] : [0, 1, 2, 3, 4, 5];
+        const map = isLeft ? [1, 0, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5];
         let geoIndex = map.indexOf(highlightedCorner);
 
         const cp = crns[geoIndex]; 
@@ -429,14 +384,14 @@ function downloadDXF() {
     ];
     
     const baseCorners = generatePathData(pts, 0, radii);
-    dxf = dxf.concat(getDXFEntities(baseCorners, "Shape", true, null));
+    dxf = dxf.concat(getDXFPolyline("Shape", baseCorners, true));
     
     const bandCorners = generatePathData(pts, 12, radii);
     currentSections.forEach((sec, sIdx) => {
         const cb = document.getElementById(`bandSec${sIdx}`);
         if (cb && cb.checked) {
-            if (sec.length === n) dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", true, null)); 
-            else dxf = dxf.concat(getDXFEntities(bandCorners, "Edge_Banding", false, sec));
+            if (sec.length === n) dxf = dxf.concat(getDXFPolyline("Edge_Banding", bandCorners, true)); 
+            else dxf = dxf.concat(getDXFPolyline("Edge_Banding", bandCorners, false, sec));
         }
     });
     
