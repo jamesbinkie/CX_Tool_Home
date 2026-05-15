@@ -55,7 +55,7 @@ function validateAndClamp() {
 
 function getRadii() { 
     const isLeft = document.getElementById("type").value === "left";
-    const map = isLeft ? [1, 0, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5];
+    const map = isLeft ? [1, 0, 2, 3, 5, 4] : [0, 1, 2, 3, 4, 5];
     return map.map(idx => parseFloat(document.getElementById(`rad${idx}`).value) || 0); 
 }
 
@@ -79,8 +79,9 @@ function validateRadii() {
     const C = parseFloat(document.getElementById("legW").value) || 300;
     const D = parseFloat(document.getElementById("legH").value) || 300;
     
-    let maxR3 = Math.min(C, D) - 0.1;
-    if (radii[3] > maxR3) { radii[3] = Math.floor(maxR3); changed = true; }
+    let internalIdx = isLeft ? 4 : 3; 
+    let maxRInternal = Math.min(C, D) - 0.1;
+    if (radii[internalIdx] > maxRInternal) { radii[internalIdx] = Math.floor(maxRInternal); changed = true; }
     
     let outerIdx = isLeft ? 1 : 0;
     let maxROuter = (C + D) - Math.sqrt(2 * C * D);
@@ -126,7 +127,7 @@ function validateRadii() {
     }
 
     if (changed || conflict) {
-        const map = isLeft ? [1, 0, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5];
+        const map = isLeft ? [1, 0, 2, 3, 5, 4] : [0, 1, 2, 3, 4, 5];
         for (let i = 0; i < n; i++) document.getElementById(`rad${map[i]}`).value = Math.floor(radii[i]);
     }
     
@@ -184,6 +185,7 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         let R_off = isConvex ? r + offset * scale : r - offset * scale;
         R_off = Math.max(0, R_off); if (r === 0) R_off = 0;
         let d = R_off > 0 ? R_off * Math.abs(Math.tan(alpha / 2)) : 0;
+        
         let bulge = Math.tan(alpha / 4);
         rawCorners.push({ C_off, R_off, d, alpha, cross, isConvex, bulge });
     }
@@ -206,14 +208,17 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         let arcStart = { x: rc.C_off.x - ePrev.vx * rc.d, y: rc.C_off.y - ePrev.vy * rc.d };
         let arcEnd = { x: rc.C_off.x + eNext.vx * rc.d, y: rc.C_off.y + eNext.vy * rc.d };
         let arcMid = { x: rc.C_off.x, y: rc.C_off.y };
-        let bulge = 0;
+        let bulge = rc.R_off > 0 ? rc.bulge : 0;
 
         if (rc.R_off > 0) {
-            let sign = Math.sign(rc.cross) || 1, nx = -ePrev.vy * sign, ny = ePrev.vx * sign;
-            let cx = arcStart.x + nx * rc.R_off, cy = arcStart.y + ny * rc.R_off;
-            let vX = rc.C_off.x - cx, vY = rc.C_off.y - cy, vLen = Math.hypot(vX, vY) || 1;
-            arcMid = { x: cx + (vX / vLen) * rc.R_off, y: cy + (vY / vLen) * rc.R_off };
-            bulge = (rc.isConvex ? 1 : -1) * CW * rc.bulge;
+            let mx = (arcStart.x + arcEnd.x) / 2;
+            let my = (arcStart.y + arcEnd.y) / 2;
+            let turnSign = Math.sign(rc.alpha) || 1;
+            let nx = -ePrev.vy, ny = ePrev.vx; 
+            let arcCenter = { x: arcStart.x + nx * rc.R_off * turnSign, y: arcStart.y + ny * rc.R_off * turnSign };
+            let vx = mx - arcCenter.x, vy = my - arcCenter.y;
+            let vL = Math.hypot(vx, vy) || 1;
+            arcMid = { x: arcCenter.x + (vx/vL)*rc.R_off, y: arcCenter.y + (vy/vL)*rc.R_off };
         }
         corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, bulge });
     }
@@ -242,7 +247,7 @@ function getDXFPolyline(layer, corners, isClosed, sec = null) {
     }
     
     pts.forEach(p => {
-        dxf.push("  0", "VERTEX", "  8", layer, " 10", p.x.toFixed(4), " 20", p.y.toFixed(4), " 42", (p.bulge || 0).toFixed(8));
+        dxf.push("  0", "VERTEX", "  8", layer, " 10", p.x.toFixed(8), " 20", p.y.toFixed(8), " 42", (p.bulge || 0).toFixed(8));
     });
     dxf.push("  0", "SEQEND", "  8", layer);
     return dxf;
@@ -328,7 +333,7 @@ function drawLShape(targetCanvas = null) {
     drawLDimensions(ctx, scale, offX, offY, B);
     if (highlightedCorner !== -1 && !targetCanvas) {
         const isLeft = document.getElementById("type").value === "left";
-        const map = isLeft ? [1, 0, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5];
+        const map = isLeft ? [1, 0, 2, 3, 5, 4] : [0, 1, 2, 3, 4, 5];
         let geoIndex = map.indexOf(highlightedCorner);
 
         const cp = crns[geoIndex]; 
@@ -372,7 +377,7 @@ function downloadPNG() {
 }
 
 function downloadDXF() {
-    const pts = getPoints(), radii = getRadii(), n = pts.length;
+    const rawPts = getPoints(), radii = getRadii(), n = rawPts.length;
     let dxf = [
         "  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC",
         "  0", "SECTION", "  2", "TABLES",
@@ -383,10 +388,10 @@ function downloadDXF() {
         "  0", "ENDTAB", "  0", "ENDSEC", "  0", "SECTION", "  2", "ENTITIES"
     ];
     
-    const baseCorners = generatePathData(pts, 0, radii);
+    const baseCorners = generatePathData(rawPts, 0, radii);
     dxf = dxf.concat(getDXFPolyline("Shape", baseCorners, true));
     
-    const bandCorners = generatePathData(pts, 12, radii);
+    const bandCorners = generatePathData(rawPts, 12, radii);
     currentSections.forEach((sec, sIdx) => {
         const cb = document.getElementById(`bandSec${sIdx}`);
         if (cb && cb.checked) {
