@@ -4,10 +4,7 @@ const bandingColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6", "#
 
 function getEdgeNames() {
     const isLeft = document.getElementById("type").value === "left";
-    // Edges trace CCW from bottom-left [0,0]
-    return isLeft 
-        ? ["Bottom", "Right Side", "Top", "Inner Left", "Inner Top", "Left Side"] 
-        : ["Bottom", "Right Leg", "Inner Top", "Inner Left", "Top", "Left Side"];
+    return isLeft ? ["Bottom", "Right Side", "Top", "Inner Left", "Inner Top", "Left Side"] : ["Bottom", "Right Leg", "Inner Top", "Inner Left", "Top", "Left Side"];
 }
 
 window.onload = () => {
@@ -37,8 +34,6 @@ window.onload = () => {
 
 function updateUI() { 
     const isLeft = document.getElementById("type").value === "left";
-    
-    // Dynamically rename labels for Left L
     document.querySelector('[data-corner="2"] label').textContent = isLeft ? "Corner 3 (Mid L)" : "Corner 3 (Mid R)";
     document.querySelector('[data-corner="4"] label').textContent = isLeft ? "Corner 6 (Top L)" : "Corner 5 (Top R)";
     document.querySelector('[data-corner="5"] label').textContent = isLeft ? "Corner 5 (Top R)" : "Corner 6 (Top L)";
@@ -60,8 +55,7 @@ function validateAndClamp() {
 
 function getRadii() { 
     const isLeft = document.getElementById("type").value === "left";
-    // Maps geometry point indices to DOM input 'rad' indices
-    const map = isLeft ? [0, 1, 5, 4, 3, 2] : [0, 1, 2, 3, 4, 5];
+    const map = isLeft ? [1, 0, 2, 3, 5, 4] : [0, 1, 2, 3, 4, 5];
     return map.map(idx => parseFloat(document.getElementById(`rad${idx}`).value) || 0); 
 }
 
@@ -85,9 +79,8 @@ function validateRadii() {
     const C = parseFloat(document.getElementById("legW").value) || 300;
     const D = parseFloat(document.getElementById("legH").value) || 300;
     
-    let internalIdx = isLeft ? 4 : 3; 
-    let maxRInternal = Math.min(C, D) - 0.1;
-    if (radii[internalIdx] > maxRInternal) { radii[internalIdx] = Math.floor(maxRInternal); changed = true; }
+    let maxR3 = Math.min(C, D) - 0.1;
+    if (radii[3] > maxR3) { radii[3] = Math.floor(maxR3); changed = true; }
     
     let outerIdx = isLeft ? 1 : 0;
     let maxROuter = (C + D) - Math.sqrt(2 * C * D);
@@ -124,17 +117,8 @@ function validateRadii() {
             let d1 = r1 * alphas[i], d2 = r2 * alphas[(i + 1) % n];
             let len = edges[i].len;
             if (d1 + d2 > len + 0.001) {
-                let excess = (d1 + d2) - len;
-                let flex1 = d1 - (minR1 * alphas[i]), flex2 = d2 - (minR2 * alphas[(i + 1) % n]);
-                if (flex1 < 0) flex1 = 0; if (flex2 < 0) flex2 = 0;
-                
-                if (flex1 + flex2 > 0) {
-                    let f1 = flex1 / (flex1 + flex2), f2 = flex2 / (flex1 + flex2);
-                    d1 -= excess * f1; d2 -= excess * f2;
-                } else {
-                    d1 = minR1 * alphas[i]; d2 = minR2 * alphas[(i + 1) % n];
-                }
-                radii[i] = d1 / (alphas[i] || 1); radii[(i + 1) % n] = d2 / (alphas[(i + 1) % n] || 1);
+                let factor = len / (d1 + d2 + 0.0001);
+                radii[i] *= factor; radii[(i + 1) % n] *= factor;
                 clamped = true; changed = true;
             }
         }
@@ -142,7 +126,7 @@ function validateRadii() {
     }
 
     if (changed || conflict) {
-        const map = isLeft ? [0, 1, 5, 4, 3, 2] : [0, 1, 2, 3, 4, 5];
+        const map = isLeft ? [1, 0, 2, 3, 5, 4] : [0, 1, 2, 3, 4, 5];
         for (let i = 0; i < n; i++) document.getElementById(`rad${map[i]}`).value = Math.floor(radii[i]);
     }
     
@@ -167,7 +151,7 @@ function refreshHintsAndWarnings() {
 
 function getPoints() {
     const A = parseFloat(document.getElementById("totalW").value) || 1000, B = parseFloat(document.getElementById("totalH").value) || 800, C = parseFloat(document.getElementById("legW").value) || 300, D = parseFloat(document.getElementById("legH").value) || 300, isLeft = document.getElementById("type").value === "left";
-    if (isLeft) return [[0,0], [A,0], [A,B], [A-C,B], [A-C,D], [0,D]];
+    if (isLeft) return [[A,0], [0,0], [0,D], [A-C,D], [A-C,B], [A,B]];
     return [[0,0], [A,0], [A,D], [C,D], [C,B], [0,B]];
 }
 
@@ -181,11 +165,14 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     const n = pts.length; let area = 0;
     const sPts = pts.map(p => ({ x: p[0] * scale + offX, y: p[1] * scale + offY }));
     for (let i = 0; i < n; i++) area += sPts[i].x * sPts[(i + 1) % n].y - sPts[(i + 1) % n].x * sPts[i].y;
-    const CW = area > 0 ? 1 : -1, edges = [];
+    const isCCW = area > 0;
+    
+    const edges = [];
     for (let i = 0; i < n; i++) {
         const p1 = sPts[i], p2 = sPts[(i + 1) % n];
         let vx = p2.x - p1.x, vy = p2.y - p1.y, len = Math.hypot(vx, vy) || 1; vx /= len; vy /= len;
-        let nx = vy * CW, ny = -vx * CW;
+        let nx = isCCW ? vy : -vy;
+        let ny = isCCW ? -vx : vx;
         edges.push({ vx, vy, nx, ny, offL: { x1: p1.x + nx * offset * scale, y1: p1.y + ny * offset * scale, x2: p2.x + nx * offset * scale, y2: p2.y + ny * offset * scale } });
     }
     
@@ -195,7 +182,7 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         const C_off = intersectLines(ePrev.offL, eNext.offL);
         let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy;
         let alpha = Math.atan2(cross, dot);
-        let isConvex = (cross * CW) > 0;
+        let isConvex = isCCW ? (cross > 0) : (cross < 0);
         let r = radii[i] * scale;
         let R_off = isConvex ? r + offset * scale : r - offset * scale;
         R_off = Math.max(0, R_off); if (r === 0) R_off = 0;
@@ -224,15 +211,20 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         let dxfStart = 0, dxfEnd = 0, drawCCW = true;
 
         if (rc.R_off > 0) {
-            let turnSign = Math.sign(rc.cross) || 1;
-            let nx = -ePrev.vy * turnSign, ny = ePrev.vx * turnSign;
-            arcCenter = { x: arcStart.x + nx * rc.R_off, y: arcStart.y + ny * rc.R_off };
+            let inNx = isCCW ? -ePrev.vy : ePrev.vy;
+            let inNy = isCCW ? ePrev.vx : -ePrev.vx;
+
+            if (rc.isConvex) {
+                arcCenter = { x: arcStart.x + inNx * rc.R_off, y: arcStart.y + inNy * rc.R_off };
+            } else {
+                arcCenter = { x: arcStart.x - inNx * rc.R_off, y: arcStart.y - inNy * rc.R_off };
+            }
 
             let aStart = Math.atan2(arcStart.y - arcCenter.y, arcStart.x - arcCenter.x) * 180 / Math.PI;
             let aEnd   = Math.atan2(arcEnd.y - arcCenter.y, arcEnd.x - arcCenter.x) * 180 / Math.PI;
             if (aStart < 0) aStart += 360; if (aEnd < 0) aEnd += 360;
 
-            drawCCW = (CW === 1 && rc.isConvex) || (CW === -1 && !rc.isConvex);
+            drawCCW = isCCW ? rc.isConvex : !rc.isConvex;
             
             if (drawCCW) {
                 dxfStart = aStart; dxfEnd = aEnd;
@@ -258,30 +250,27 @@ function getDXFEntities(corners, layer, isClosed, sec = null) {
     function getExactPoints(c) {
         if (c.R_off <= 0.001) return { enter: c.C_off, exit: c.C_off };
         
-        let cx = parseFloat(c.arcCenter.x.toFixed(8));
-        let cy = parseFloat(c.arcCenter.y.toFixed(8));
-        let r  = parseFloat(c.R_off.toFixed(8));
-        let a1 = parseFloat(c.dxfStart.toFixed(8)) * Math.PI / 180;
-        let a2 = parseFloat(c.dxfEnd.toFixed(8)) * Math.PI / 180;
+        let cx = parseFloat(c.arcCenter.x.toFixed(6));
+        let cy = parseFloat(c.arcCenter.y.toFixed(6));
+        let r  = parseFloat(c.R_off.toFixed(6));
+        let aStart = parseFloat(c.dxfStart.toFixed(6)) * Math.PI / 180;
+        let aEnd   = parseFloat(c.dxfEnd.toFixed(6)) * Math.PI / 180;
 
-        let pt1 = { x: cx + r * Math.cos(a1), y: cy + r * Math.sin(a1) };
-        let pt2 = { x: cx + r * Math.cos(a2), y: cy + r * Math.sin(a2) };
+        let ptA = { x: cx + r * Math.cos(aStart), y: cy + r * Math.sin(aStart) };
+        let ptB = { x: cx + r * Math.cos(aEnd),   y: cy + r * Math.sin(aEnd) };
 
-        if (c.drawCCW) {
-            return { enter: pt1, exit: pt2 };
-        } else {
-            return { enter: pt2, exit: pt1 };
-        }
+        if (c.drawCCW) return { enter: ptA, exit: ptB };
+        return { enter: ptB, exit: ptA };
     }
 
     const pushLine = (p1, p2) => {
         if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.001) return;
-        dxf.push("  0", "LINE", "  8", layer, " 10", p1.x.toFixed(8), " 20", p1.y.toFixed(8), " 11", p2.x.toFixed(8), " 21", p2.y.toFixed(8));
+        dxf.push("  0", "LINE", "  8", layer, " 10", p1.x.toFixed(6), " 20", p1.y.toFixed(6), " 11", p2.x.toFixed(6), " 21", p2.y.toFixed(6));
     };
     
     const pushArc = (c) => {
         if (c.R_off <= 0.001) return;
-        dxf.push("  0", "ARC", "  8", layer, " 10", c.arcCenter.x.toFixed(8), " 20", c.arcCenter.y.toFixed(8), " 40", c.R_off.toFixed(8), " 50", c.dxfStart.toFixed(8), " 51", c.dxfEnd.toFixed(8));
+        dxf.push("  0", "ARC", "  8", layer, " 10", c.arcCenter.x.toFixed(6), " 20", c.arcCenter.y.toFixed(6), " 40", c.R_off.toFixed(6), " 50", c.dxfStart.toFixed(6), " 51", c.dxfEnd.toFixed(6));
     };
 
     if (isClosed) {
@@ -349,7 +338,7 @@ function drawLShape(targetCanvas = null) {
     ctx.beginPath(); ctx.moveTo(crns[0].arcStart.x, crns[0].arcStart.y);
     for (let i = 0; i < n; i++) {
         let c = crns[i];
-        if (c.R_off > 0) ctx.arcTo(c.arcCenter.x, c.arcCenter.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
+        if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
         ctx.lineTo(crns[(i + 1) % n].arcStart.x, crns[(i + 1) % n].arcStart.y);
     }
     ctx.closePath(); ctx.lineWidth = Math.max(2, 3 * (canvas.width / 1200)); ctx.strokeStyle = "#000"; ctx.stroke();
@@ -365,7 +354,7 @@ function drawLShape(targetCanvas = null) {
                     ctx.moveTo(bCrns[0].arcStart.x, bCrns[0].arcStart.y);
                     for (let i = 0; i < n; i++) {
                         let c = bCrns[i];
-                        if (c.R_off > 0) ctx.arcTo(c.arcCenter.x, c.arcCenter.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
+                        if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y);
                         ctx.lineTo(bCrns[(i + 1) % n].arcStart.x, bCrns[(i + 1) % n].arcStart.y);
                     }
                     ctx.closePath();
@@ -374,7 +363,7 @@ function drawLShape(targetCanvas = null) {
                     sec.forEach((edgeIdx, idx) => {
                         let c = bCrns[(edgeIdx + 1) % n];
                         ctx.lineTo(c.arcStart.x, c.arcStart.y);
-                        if (idx < sec.length - 1) { if (c.R_off > 0) ctx.arcTo(c.arcCenter.x, c.arcCenter.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y); }
+                        if (idx < sec.length - 1) { if (c.R_off > 0) ctx.arcTo(c.C_off.x, c.C_off.y, c.arcEnd.x, c.arcEnd.y, c.R_off); else ctx.lineTo(c.C_off.x, c.C_off.y); }
                     });
                 }
                 ctx.stroke();
@@ -384,14 +373,12 @@ function drawLShape(targetCanvas = null) {
     drawLDimensions(ctx, scale, offX, offY, B);
     if (highlightedCorner !== -1 && !targetCanvas) {
         const isLeft = document.getElementById("type").value === "left";
-        const map = isLeft ? [0, 1, 5, 4, 3, 2] : [0, 1, 2, 3, 4, 5];
+        const map = isLeft ? [1, 0, 2, 3, 5, 4] : [0, 1, 2, 3, 4, 5];
         let geoIndex = map.indexOf(highlightedCorner);
 
         const cp = crns[geoIndex]; 
         ctx.beginPath(); 
-        const trX = x => x * scale + offX;
-        const trY = y => (B - y) * scale + offY;
-        ctx.arc(trX(cp.arcMid.x), trY(cp.arcMid.y), 20, 0, Math.PI * 2); 
+        ctx.arc(cp.arcMid.x, cp.arcMid.y, 20, 0, Math.PI * 2); 
         ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();
     }
 }
@@ -430,7 +417,7 @@ function downloadPNG() {
 }
 
 function downloadDXF() {
-    const rawPts = getPoints(), radii = getRadii(), maxY = Math.max(...rawPts.map(p => p[1])), pts = rawPts.map(p => [p[0], p[1]]), n = pts.length;
+    const pts = getPoints(), radii = getRadii(), n = pts.length;
     let dxf = [
         "  0", "SECTION", "  2", "HEADER", "  9", "$ACADVER", "  1", "AC1009", "  0", "ENDSEC",
         "  0", "SECTION", "  2", "TABLES",
