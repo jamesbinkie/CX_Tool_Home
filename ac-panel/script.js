@@ -1,14 +1,18 @@
 window.onload = () => {
-    const inputs = ["orientation", "windowW", "windowH", "ventW", "ventH", "centerVent", "posX", "posY"];
+    const inputs = ["panelOrientation", "ventOrientation", "windowW", "windowH", "ventW", "ventH", "centerH", "centerV", "posX", "posY"];
     inputs.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            if (el.tagName === "INPUT" && el.type === "number") {
-                el.addEventListener("input", () => { drawPanel(); });
+            if (el.tagName === "INPUT" && (el.type === "number" || el.type === "checkbox")) {
+                if (el.type === "number") {
+                    el.addEventListener("input", () => { drawPanel(); });
+                }
                 el.addEventListener("blur", () => { validateAndClamp(); updateUI(); });
-            } else {
+                el.addEventListener("change", () => { validateAndClamp(); updateUI(); });
+            } else if (el.tagName === "SELECT") {
                 el.addEventListener("change", () => { 
-                    if (id === 'orientation') swapDimensions();
+                    if (id === 'panelOrientation') swapDimensions('windowW', 'windowH');
+                    if (id === 'ventOrientation') swapDimensions('ventW', 'ventH');
                     validateAndClamp(); 
                     updateUI(); 
                 });
@@ -23,30 +27,30 @@ window.onload = () => {
     updateUI();
 };
 
-function swapDimensions() {
-    const wEl = document.getElementById("windowW");
-    const hEl = document.getElementById("windowH");
+function swapDimensions(wId, hId) {
+    const wEl = document.getElementById(wId);
+    const hEl = document.getElementById(hId);
     const temp = wEl.value;
     wEl.value = hEl.value;
     hEl.value = temp;
 }
 
 function updateUI() {
-    const isCentered = document.getElementById("centerVent").checked;
+    const centerH = document.getElementById("centerH").checked;
+    const centerV = document.getElementById("centerV").checked;
     const posX = document.getElementById("posX");
     const posY = document.getElementById("posY");
     
-    posX.disabled = isCentered;
-    posY.disabled = isCentered;
+    posX.disabled = centerH;
+    posY.disabled = centerV;
     
-    if (isCentered) {
-        const wW = parseFloat(document.getElementById("windowW").value) || 0;
-        const wH = parseFloat(document.getElementById("windowH").value) || 0;
-        const vW = parseFloat(document.getElementById("ventW").value) || 0;
-        const vH = parseFloat(document.getElementById("ventH").value) || 0;
-        posX.value = Math.max(0, (wW - vW) / 2).toFixed(2);
-        posY.value = Math.max(0, (wH - vH) / 2).toFixed(2);
-    }
+    const wW = parseFloat(document.getElementById("windowW").value) || 0;
+    const wH = parseFloat(document.getElementById("windowH").value) || 0;
+    const vW = parseFloat(document.getElementById("ventW").value) || 0;
+    const vH = parseFloat(document.getElementById("ventH").value) || 0;
+
+    if (centerH) posX.value = Math.max(20, (wW - vW) / 2).toFixed(2);
+    if (centerV) posY.value = Math.max(20, (wH - vH) / 2).toFixed(2);
     
     drawPanel();
 }
@@ -54,28 +58,41 @@ function updateUI() {
 function validateAndClamp() {
     let wW = parseFloat(document.getElementById("windowW").value) || 100;
     let wH = parseFloat(document.getElementById("windowH").value) || 100;
+    
+    // Minimum panel size to allow for 20mm border x2 (40mm)
+    wW = Math.max(100, wW);
+    wH = Math.max(100, wH);
+
     let vW = parseFloat(document.getElementById("ventW").value) || 50;
     let vH = parseFloat(document.getElementById("ventH").value) || 50;
     
-    // Prevent the inner hole from being larger than the panel
-    vW = Math.min(vW, wW - 10);
-    vH = Math.min(vH, wH - 10);
+    // Enforce maximum inner hole size (leaves a 20mm border on all edges)
+    vW = Math.max(10, Math.min(vW, wW - 40));
+    vH = Math.max(10, Math.min(vH, wH - 40));
     
     document.getElementById("windowW").value = Math.round(wW);
     document.getElementById("windowH").value = Math.round(wH);
     document.getElementById("ventW").value = Math.round(vW);
     document.getElementById("ventH").value = Math.round(vH);
     
-    const isCentered = document.getElementById("centerVent").checked;
-    if (!isCentered) {
+    const centerH = document.getElementById("centerH").checked;
+    const centerV = document.getElementById("centerV").checked;
+
+    if (!centerH) {
         let pX = parseFloat(document.getElementById("posX").value) || 0;
-        let pY = parseFloat(document.getElementById("posY").value) || 0;
-        pX = Math.max(0, Math.min(pX, wW - vW));
-        pY = Math.max(0, Math.min(pY, wH - vH));
+        // Clamp position between 20mm and (Width - VentWidth - 20mm)
+        pX = Math.max(20, Math.min(pX, wW - vW - 20));
         document.getElementById("posX").value = pX;
-        document.getElementById("posY").value = pY;
     } else {
         document.getElementById("posX").value = ((wW - vW) / 2).toFixed(2);
+    }
+
+    if (!centerV) {
+        let pY = parseFloat(document.getElementById("posY").value) || 0;
+        // Clamp position between 20mm and (Height - VentHeight - 20mm)
+        pY = Math.max(20, Math.min(pY, wH - vH - 20));
+        document.getElementById("posY").value = pY;
+    } else {
         document.getElementById("posY").value = ((wH - vH) / 2).toFixed(2);
     }
 }
@@ -176,13 +193,15 @@ function drawDimensions(ctx, wW, wH, vW, vH, posX, posY, scale, offsetX, offsetY
     drawDimLine(ctx, trX(0), trY(0), trX(wW), trY(0), `${wW} mm`, "below", dimOffset);
     drawDimLine(ctx, trX(0), trY(wH), trX(0), trY(0), `${wH} mm`, "left", dimOffset);
     
-    // Vent Cutout Dimensions
-    drawDimLine(ctx, trX(posX), trY(posY + vH/2), trX(posX + vW), trY(posY + vH/2), `${vW}`, "center", 0);
-    drawDimLine(ctx, trX(posX + vW/2), trY(posY + vH), trX(posX + vW/2), trY(posY), `${vH}`, "middle", 0);
+    // Vent Cutout Dimensions (Positioned above and to the right of the cutout so they don't overlap)
+    drawDimLine(ctx, trX(posX), trY(posY + vH), trX(posX + vW), trY(posY + vH), `${vW}`, "above", 15 * scaleFactor);
+    drawDimLine(ctx, trX(posX + vW), trY(posY + vH), trX(posX + vW), trY(posY), `${vH}`, "right", 15 * scaleFactor);
     
     // Offset Dimensions if not centered
-    if(!document.getElementById("centerVent").checked) {
+    if(!document.getElementById("centerH").checked) {
         drawDimLine(ctx, trX(0), trY(posY + vH/2), trX(posX), trY(posY + vH/2), `${posX}`, "above", 5);
+    }
+    if(!document.getElementById("centerV").checked) {
         drawDimLine(ctx, trX(posX + vW/2), trY(0), trX(posX + vW/2), trY(posY), `${posY}`, "right", 5);
     }
 }
@@ -211,12 +230,6 @@ function drawDimLine(ctx, x1, y1, x2, y2, label, position, offset) {
     else if (position === "below") textY += textOffset; 
     else if (position === "left") textX -= textOffset; 
     else if (position === "right") textX += textOffset;
-    
-    if(position === "center" || position === "middle") {
-        const bgW = ctx.measureText(label).width + 8;
-        ctx.fillStyle = "rgba(255,255,255,0.85)";
-        ctx.fillRect(textX - bgW/2, textY - 10, bgW, 20);
-    }
     
     ctx.fillStyle = "#000"; 
     ctx.fillText(label, textX, textY);
