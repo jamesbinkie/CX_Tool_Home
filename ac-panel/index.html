@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AC Unit Panel Generator</title>
+  <link rel="icon" type="image/png" href="../favicon.png">
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    .warning-box { display: none; background: #313338; color: #f2f3f5; padding: 15px; border-radius: 10px; font-weight: 600; border: 4px solid #f39c12; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+  </style>
+</head>
+<body>
+
+<div class="nav-header">
+  <button onclick="window.location.href='../index.html'" style="background: #4f545c;">← Back to Home</button>
+</div>
+
+<div class="container">
+  <h2>AC Unit Panel Generator (mm)</h2>
+
+  <div class="main-layout">
+    <div class="left-col">
+      <div class="file-controls panel">
+        <h3>Export Part</h3>
+        <div style="display: flex; align-items: flex-end; gap: 15px; flex-wrap: wrap;">
+          <label style="flex: 1; min-width: 150px;">File Name: <input id="fileName" type="text" value="ac_panel" style="width: 100%;"></label>
+          <button onclick="downloadPNG()">Download PNG</button>
+          <button onclick="downloadDXF()">Download DXF</button>
+        </div>
+      </div>
+      <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="right-col">
+      <div class="controls panel">
+        <h3>Panel Dimensions</h3>
+        <div style="display: flex; flex-wrap: wrap; gap: 15px 25px;">
+          <label class="full-width">Orientation:
+            <select id="orientation">
+              <option value="portrait">Portrait</option>
+              <option value="landscape">Landscape</option>
+            </select>
+          </label>
+          <label>Window Width:<input id="windowW" type="number" value="600" onclick="this.select()"></label>
+          <label>Window Height:<input id="windowH" type="number" value="1000" onclick="this.select()"></label>
+        </div>
+      </div>
+
+      <div class="controls panel">
+        <h3>Vent Cutout (Fully Rounded)</h3>
+        <div style="display: flex; flex-wrap: wrap; gap: 15px 25px;">
+          <label>Vent Width:<input id="ventW" type="number" value="150" onclick="this.select()"></label>
+          <label>Vent Height:<input id="ventH" type="number" value="300" onclick="this.select()"></label>
+          <label class="full-width" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 5px;">
+            <input type="checkbox" id="centerVent" checked> Center Vent Automatically
+          </label>
+          <label>Distance from Left:<input id="posX" type="number" value="225" onclick="this.select()" disabled></label>
+          <label>Distance from Bottom:<input id="posY" type="number" value="350" onclick="this.select()" disabled></label>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="versionLabel">v1.0.0</div>
+
+<script src="script.js"></script>
+</body>
+</html>
