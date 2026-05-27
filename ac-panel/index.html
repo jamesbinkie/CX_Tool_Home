@@ -35,8 +35,14 @@
       <div class="controls panel">
         <h3>Panel Dimensions</h3>
         <div style="display: flex; flex-wrap: wrap; gap: 15px 25px;">
-          <label class="full-width">Orientation:
-            <select id="orientation">
+          <label>Panel Orientation:
+            <select id="panelOrientation">
+              <option value="portrait">Portrait</option>
+              <option value="landscape">Landscape</option>
+            </select>
+          </label>
+          <label>Vent Orientation:
+            <select id="ventOrientation">
               <option value="portrait">Portrait</option>
               <option value="landscape">Landscape</option>
             </select>
@@ -48,12 +54,20 @@
 
       <div class="controls panel">
         <h3>Vent Cutout (Fully Rounded)</h3>
+        <p style="font-size: 11px; color: #b5bac1; margin-top: -5px; margin-bottom: 12px;">Cutout will be constrained to a 20mm minimum distance from the edge.</p>
         <div style="display: flex; flex-wrap: wrap; gap: 15px 25px;">
           <label>Vent Width:<input id="ventW" type="number" value="150" onclick="this.select()"></label>
           <label>Vent Height:<input id="ventH" type="number" value="300" onclick="this.select()"></label>
-          <label class="full-width" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 5px;">
-            <input type="checkbox" id="centerVent" checked> Center Vent Automatically
+          
+          <label class="full-width" style="flex-direction: row; align-items: center; gap: 20px; margin-top: 5px;">
+            <span style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="centerH" checked> Center Horizontal
+            </span>
+            <span style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="centerV" checked> Center Vertical
+            </span>
           </label>
+
           <label>Distance from Left:<input id="posX" type="number" value="225" onclick="this.select()" disabled></label>
           <label>Distance from Bottom:<input id="posY" type="number" value="350" onclick="this.select()" disabled></label>
         </div>
@@ -61,7 +75,7 @@
     </div>
   </div>
 </div>
-<div id="versionLabel">v1.0.0</div>
+<div id="versionLabel">v1.1.0</div>
 
 <script src="script.js"></script>
 </body>
