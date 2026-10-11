@@ -319,7 +319,6 @@ function updateBandingUI(radii) {
     }     
     currentSections = sections; 
     
-    // Dynamic edge names linked to screen position
     const edgeNames = getEdgeNames();          
     
     let html = `<label style="grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; font-weight: bold; margin-bottom: 5px;"><input type="checkbox" id="bandAll"> Band All</label>`;          
@@ -332,6 +331,24 @@ function updateBandingUI(radii) {
     allCb.checked = Array.from(secCbs).every(c => c.checked);     
     allCb.addEventListener("change", (e) => { secCbs.forEach(cb => cb.checked = e.target.checked); validateRadii(); drawLShape(); });     
     secCbs.forEach(cb => { cb.addEventListener("change", () => { allCb.checked = Array.from(secCbs).every(c => c.checked); validateRadii(); drawLShape(); }); }); 
+}
+
+function drawShapeOnCanvas(ctx, corners, scale, offX, offY, shapeH) {     
+    const trX = x => x * scale + offX;     
+    const trY = y => (shapeH - y) * scale + offY;     
+    ctx.beginPath();     
+    ctx.moveTo(trX(corners[0].arcStart.x), trY(corners[0].arcStart.y));     
+    for (let i = 0; i < corners.length; i++) {         
+        let c = corners[i];         
+        if (c.R_off > 0) {             
+            ctx.arcTo(trX(c.C_off.x), trY(c.C_off.y), trX(c.arcEnd.x), trY(c.arcEnd.y), c.R_off * scale);         
+        } else {             
+            ctx.lineTo(trX(c.C_off.x), trY(c.C_off.y));         
+        }         
+        let next = corners[(i + 1) % corners.length];         
+        ctx.lineTo(trX(next.arcStart.x), trY(next.arcStart.y));     
+    }     
+    ctx.closePath(); 
 }
 
 function drawLShape(targetCanvas = null) {     
@@ -408,6 +425,7 @@ function drawLDimensions(ctx, crns, scale) {
     const B = parseFloat(document.getElementById("totalH").value);
     const C = parseFloat(document.getElementById("legW").value);
     const D = parseFloat(document.getElementById("legH").value);
+    const isLeft = document.getElementById("type").value === "left";
     
     function drawEdgeDim(idx, label) {
         const p1 = crns[idx].C_off;
@@ -417,6 +435,11 @@ function drawLDimensions(ctx, crns, scale) {
         const nx = edge.nx, ny = edge.ny;
         const lineX1 = p1.x + nx * off, lineY1 = p1.y + ny * off;
         const lineX2 = p2.x + nx * off, lineY2 = p2.y + ny * off;
+        
+        ctx.beginPath(); 
+        ctx.moveTo(p1.x + nx * 5, p1.y + ny * 5); ctx.lineTo(lineX1, lineY1);
+        ctx.moveTo(p2.x + nx * 5, p2.y + ny * 5); ctx.lineTo(lineX2, lineY2);
+        ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = 1; ctx.stroke();
         
         ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); 
         ctx.strokeStyle = "#444"; ctx.lineWidth = 1.5 * scaleFactor; ctx.stroke();     
@@ -450,9 +473,15 @@ function drawLDimensions(ctx, crns, scale) {
     }
 
     drawEdgeDim(0, `A: ${A}mm`);
-    drawEdgeDim(1, `D: ${D}mm`);
     drawEdgeDim(4, `C: ${C}mm`);
-    drawEdgeDim(5, `B: ${B}mm`);
+    
+    if (isLeft) {
+        drawEdgeDim(1, `B: ${B}mm`); 
+        drawEdgeDim(5, `D: ${D}mm`); 
+    } else {
+        drawEdgeDim(1, `D: ${D}mm`); 
+        drawEdgeDim(5, `B: ${B}mm`); 
+    }
 }
 
 function downloadPNG() {     
