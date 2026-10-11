@@ -141,9 +141,15 @@ function validateRadii() {
 }
 
 function getPoints() {
-    const type = document.getElementById("type").value, A = parseFloat(document.getElementById("A").value) || 100, B = parseFloat(document.getElementById("B").value) || 50, C = parseFloat(document.getElementById("C").value) || 20, D = parseFloat(document.getElementById("D").value) || 0;
+    const type = document.getElementById("type").value;
+    const A = parseFloat(document.getElementById("A").value) || 100;
+    const B = parseFloat(document.getElementById("B").value) || 50;
+    const C = parseFloat(document.getElementById("C").value) || 20;
+    const D = parseFloat(document.getElementById("D").value) || 0;
+    
     if (type === "regular") return [[0,0], [B,0], [B - (B-C)/2, A], [(B-C)/2, A]];
     if (type === "right") return [[0,0], [B,0], [C, A], [0, A]];
+    if (type === "left") return [[0,0], [B,0], [B, A], [B - C, A]];
     return [[0,0], [B,0], [D + C, A], [D, A]];
 }
 
