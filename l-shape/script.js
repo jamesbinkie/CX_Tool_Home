@@ -369,7 +369,7 @@ function drawLShape(targetCanvas = null) {
         });     
     }     
     
-    if (rotationAngle === 0) drawLDimensions(ctx, scale, offX, offY, shapeH);
+    drawLDimensions(ctx, screenPts, scale, offX, offY);
     
     if (highlightedCorner !== -1 && !targetCanvas) {         
         const isLeft = document.getElementById("type").value === "left";         
@@ -382,11 +382,17 @@ function drawLShape(targetCanvas = null) {
     } 
 }
 
-function drawLDimensions(ctx, scale, offX, offY, th) {     
+function drawLDimensions(ctx, pts, scale, offX, offY) {     
     const scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1;     
     ctx.font = `bold ${Math.max(12, 16 * scaleFactor)}px Segoe UI, Arial`; ctx.fillStyle = "#000"; ctx.textAlign = "center";     
-    const A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value), C = parseFloat(document.getElementById("legW").value), D = parseFloat(document.getElementById("legH").value), isLeft = document.getElementById("type").value === "left";          
     
+    const xs = pts.map(p => p[0]);
+    const ys = pts.map(p => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const W = maxX - minX;
+    const H = maxY - minY;
+
     const drawDim = (x1, y1, x2, y2, label) => {         
         const angle = Math.atan2(y2 - y1, x2 - x1), textWidth = ctx.measureText(label).width + (15 * scaleFactor), mx = (x1 + x2) / 2, my = (y1 + y2) / 2;         
         ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(mx - Math.cos(angle)*(textWidth/2), my - Math.sin(angle)*(textWidth/2)); ctx.moveTo(mx + Math.cos(angle)*(textWidth/2), my + Math.sin(angle)*(textWidth/2)); ctx.lineTo(x2, y2);         
@@ -394,16 +400,26 @@ function drawLDimensions(ctx, scale, offX, offY, th) {
         const s = 10 * scaleFactor; ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - s*Math.cos(angle-Math.PI/6), y2 - s*Math.sin(angle-Math.PI/6)); ctx.lineTo(x2 - s*Math.cos(angle+Math.PI/6), y2 - s*Math.sin(angle+Math.PI/6)); ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();         
         ctx.fillText(label, mx, my + (5 * scaleFactor));     
     };          
-    
+
     const off = 55 * scaleFactor;     
-    drawDim(offX, offY + th*scale + off, offX + A*scale, offY + th*scale + off, `A: ${A}mm`);     
-    const bX = isLeft ? offX + A*scale + (55 * scaleFactor) : offX - (55 * scaleFactor);     
-    drawDim(bX, offY + th*scale, bX, offY, `B: ${B}mm`);     
-    const cX = isLeft ? offX + A*scale - C*scale : offX;      
-    const cX2 = isLeft ? offX + A*scale : offX + C*scale;     
-    drawDim(cX, offY - (25 * scaleFactor), cX2, offY - (25 * scaleFactor), `C: ${C}mm`);     
-    const dX = isLeft ? offX - (55 * scaleFactor) : offX + A*scale + (55 * scaleFactor);     
-    drawDim(dX, offY + th*scale, dX, offY + th*scale - D*scale, `D: ${D}mm`); 
+    drawDim(minX * scale + offX, maxY * scale + offY + off, maxX * scale + offX, maxY * scale + offY + off, `W: ${W.toFixed(2)}mm`);     
+    
+    const bX = (document.getElementById("type").value === "left") ? maxX * scale + offX + off : minX * scale + offX - off;     
+    drawDim(bX, maxY * scale + offY, bX, minY * scale + offY, `H: ${H.toFixed(2)}mm`);     
+    
+    if (rotationAngle === 0) {
+        const A = parseFloat(document.getElementById("totalW").value);
+        const C = parseFloat(document.getElementById("legW").value);
+        const D = parseFloat(document.getElementById("legH").value);
+        const isLeft = document.getElementById("type").value === "left";
+        
+        const cX = isLeft ? offX + A*scale - C*scale : offX;      
+        const cX2 = isLeft ? offX + A*scale : offX + C*scale;     
+        drawDim(cX, minY * scale + offY - (25 * scaleFactor), cX2, minY * scale + offY - (25 * scaleFactor), `C: ${C}mm`);     
+        
+        const dX = isLeft ? offX - off : offX + A*scale + off;     
+        drawDim(dX, maxY * scale + offY, dX, maxY * scale + offY - D*scale, `D: ${D}mm`); 
+    }
 }
 
 function downloadPNG() {     
