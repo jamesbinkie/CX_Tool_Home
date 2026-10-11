@@ -23,7 +23,33 @@ function getEdgeNames() {
     return isLeft ? leftNames[step] : rightNames[step];
 }
 
+function updateCornerLabels() {
+    const isLeft = document.getElementById("type").value === "left";
+    const step = (rotationAngle / 90) % 4;
+    const rightNames = [
+        ["Btm L", "Btm R", "Mid R", "Internal", "Top R", "Top L"],
+        ["Top L", "Btm L", "Btm Mid", "Internal", "Btm R", "Top R"],
+        ["Top R", "Top L", "Mid L", "Internal", "Btm L", "Btm R"],
+        ["Btm R", "Top R", "Top Mid", "Internal", "Top L", "Btm L"]
+    ];
+    const leftNames = [
+        ["Btm R", "Btm L", "Mid L", "Internal", "Top L", "Top R"],
+        ["Btm L", "Top L", "Top Mid", "Internal", "Top R", "Btm R"],
+        ["Top L", "Top R", "Mid R", "Internal", "Btm R", "Btm L"],
+        ["Top R", "Btm R", "Btm Mid", "Internal", "Btm L", "Top L"]
+    ];
+    const names = isLeft ? leftNames[step] : rightNames[step];
+    
+    document.querySelector('[data-corner="0"] label').textContent = `Corner 1 (${names[0]})`;
+    document.querySelector('[data-corner="1"] label').textContent = `Corner 2 (${names[1]})`;
+    document.querySelector('[data-corner="2"] label').textContent = `Corner 3 (${names[2]})`;
+    document.querySelector('[data-corner="3"] label').textContent = `Corner 4 (${names[3]})`;
+    document.querySelector('[data-corner="4"] label').textContent = `Corner 5 (${names[4]})`;
+    document.querySelector('[data-corner="5"] label').textContent = `Corner 6 (${names[5]})`;
+}
+
 let highlightedCorner = -1; 
+let highlightedEdge = null;
 let currentSections = []; 
 const bandingColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"]; 
 
@@ -40,6 +66,17 @@ window.onload = () => {
             }         
         }     
     });     
+    
+    // Dimension hover edge highlighting
+    const dimInputs = { "totalW": [0], "totalH": [5], "legW": [4], "legH": [1] };
+    for (let id in dimInputs) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('mouseenter', () => { highlightedEdge = dimInputs[id]; drawLShape(); });
+            el.addEventListener('mouseleave', () => { highlightedEdge = null; drawLShape(); });
+        }
+    }
+
     document.querySelectorAll('.corner-input-wrap').forEach(wrap => {         
         wrap.addEventListener('mouseenter', () => { highlightedCorner = parseInt(wrap.dataset.corner); drawLShape(); });         
         wrap.addEventListener('mouseleave', () => { highlightedCorner = -1; drawLShape(); });     
@@ -51,13 +88,10 @@ window.onload = () => {
 };
 
 function updateUI() {      
-    const isLeft = document.getElementById("type").value === "left";     
-    document.querySelector('[data-corner="2"] label').textContent = isLeft ? "Corner 3 (Mid L)" : "Corner 3 (Mid R)";     
-    document.querySelector('[data-corner="4"] label').textContent = isLeft ? "Corner 6 (Top L)" : "Corner 5 (Top R)";     
-    document.querySelector('[data-corner="5"] label').textContent = isLeft ? "Corner 5 (Top R)" : "Corner 6 (Top L)";          
     refreshHintsAndWarnings();      
     updateBandingUI(getRadii());      
     validateRadii();      
+    updateCornerLabels();
     drawLShape();  
 }
 
@@ -403,6 +437,20 @@ function drawLShape(targetCanvas = null) {
             }         
         });     
     }     
+    
+    if (highlightedEdge !== null && !targetCanvas) {
+        ctx.beginPath();
+        highlightedEdge.forEach(edgeIdx => {
+            const c1 = crns[edgeIdx];
+            const c2 = crns[(edgeIdx + 1) % crns.length];
+            ctx.moveTo(c1.arcEnd.x, c1.arcEnd.y);
+            ctx.lineTo(c2.arcStart.x, c2.arcStart.y);
+        });
+        ctx.strokeStyle = "rgba(0, 159, 227, 0.5)";
+        ctx.lineWidth = 16 * (canvas.width / 1200);
+        ctx.lineCap = "round";
+        ctx.stroke();
+    }
     
     drawLDimensions(ctx, crns, scale);
     
