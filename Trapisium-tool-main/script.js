@@ -15,7 +15,21 @@ function getEdgeNames() {
     return names[(rotationAngle / 90) % 4];
 }
 
+function updateCornerLabels() {
+    const names = [
+        ["Btm L", "Btm R", "Top R", "Top L"],
+        ["Top L", "Btm L", "Btm R", "Top R"],
+        ["Top R", "Top L", "Btm L", "Btm R"],
+        ["Btm R", "Top R", "Top L", "Btm L"]
+    ][(rotationAngle / 90) % 4];
+    document.querySelector('[data-corner="0"] label').textContent = `Corner 1 (${names[0]})`;
+    document.querySelector('[data-corner="1"] label').textContent = `Corner 2 (${names[1]})`;
+    document.querySelector('[data-corner="2"] label').textContent = `Corner 3 (${names[2]})`;
+    document.querySelector('[data-corner="3"] label').textContent = `Corner 4 (${names[3]})`;
+}
+
 let highlightedCorner = -1;  
+let highlightedEdge = null;
 let currentSections = []; 
 const bandingColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f"]; 
 
@@ -32,6 +46,17 @@ window.onload = () => {
             }         
         }     
     });     
+    
+    // Dimension hover edge highlighting
+    const dimInputs = { "A": [1, 3], "B": [0], "C": [2] };
+    for (let id in dimInputs) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('mouseenter', () => { highlightedEdge = dimInputs[id]; drawTrapezium(); });
+            el.addEventListener('mouseleave', () => { highlightedEdge = null; drawTrapezium(); });
+        }
+    }
+
     const typeEl = document.getElementById("type");     
     const updateDLabel = () => {         
         const dLabel = document.getElementById("Dlabel");         
@@ -65,6 +90,7 @@ function updateUI() {
     refreshMaxLabels(); 
     updateBandingUI(getRadii()); 
     validateRadii(); 
+    updateCornerLabels();
     drawTrapezium(); 
 }
 
@@ -222,13 +248,12 @@ function getPoints() {
     return rotated.map(p => [p[0] - minX, p[1] - minY]);
 }
 
-function intersectLines(l1, l2) {     
-    const denom = (l1.x1 - l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 - l2.x2);     
-    if (Math.abs(denom) < 0.0001) return { x: l1.x2, y: l1.y2 };     
-    return { 
-        x: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.x1 - l2.x2) - (l1.x1 - l1.x2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom, 
-        y: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom 
-    }; 
+function intersectLines(p1, p2, p3, p4) {     
+    let denom = (p1.x - p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x - p4.x);     
+    if (Math.abs(denom) < 0.0001) return {x: p2.x, y: p2.y};     
+    let x = ((p1.x*p2.y - p1.y*p2.x)*(p3.x - p4.x) - (p1.x - p2.x)*(p3.x*p4.y - p3.y*p4.x)) / denom;     
+    let y = ((p1.x*p2.y - p1.y*p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x*p4.y - p3.y*p4.x)) / denom;     
+    return {x, y}; 
 }
 
 function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {     
@@ -412,6 +437,20 @@ function drawTrapezium(targetCanvas = null) {
         });     
     }          
     
+    if (highlightedEdge !== null && !targetCanvas) {
+        ctx.beginPath();
+        highlightedEdge.forEach(edgeIdx => {
+            const c1 = crns[edgeIdx];
+            const c2 = crns[(edgeIdx + 1) % crns.length];
+            ctx.moveTo(c1.arcEnd.x, c1.arcEnd.y);
+            ctx.lineTo(c2.arcStart.x, c2.arcStart.y);
+        });
+        ctx.strokeStyle = "rgba(0, 159, 227, 0.5)";
+        ctx.lineWidth = 16 * (canvas.width / 1200);
+        ctx.lineCap = "round";
+        ctx.stroke();
+    }
+
     drawDimensions(ctx, crns, scale);     
     
     if (highlightedCorner !== -1 && !targetCanvas) {         
