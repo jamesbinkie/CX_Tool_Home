@@ -1,7 +1,12 @@
+let rotationAngle = 0;
+
+function rotatePart() {
+    rotationAngle = (rotationAngle + 90) % 360;
+    updateUI();
+}
+
 let highlightedCorner = -1;  
 let currentSections = []; 
-let rotationAngle = 0; // New global rotation state
-
 const bandingColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f"]; 
 const edgeNames = ["Top", "Right", "Bottom", "Left"]; 
 
@@ -40,12 +45,6 @@ window.onload = () => {
     refreshMaxLabels(); updateUI(); 
 };
 
-// New global rotate function
-window.rotatePart = function() {
-    rotationAngle = (rotationAngle + 90) % 360;
-    updateUI();
-};
-
 function refreshMaxLabels() {     
     const Bv = parseFloat(document.getElementById("B").value) || 50;     
     const Cv = parseFloat(document.getElementById("C").value) || 20;     
@@ -61,7 +60,7 @@ function updateUI() {
 }
 
 function validateAndClamp() {     
-    const sheetW = 3050, sheetH = 2030; // Updated absolute max bounds for UI limits
+    const sheetW = 3050, sheetH = 2030;
     let a = parseFloat(document.getElementById("A").value) || 100, 
         b = parseFloat(document.getElementById("B").value) || 50, 
         c = parseFloat(document.getElementById("C").value) || 20, 
@@ -102,7 +101,7 @@ function isCornerBanded(i, n) {
 function validateRadii() {     
     let conflict = false;      
     const radii = getRadii();     
-    const pts = getPoints();     
+    const pts = getBasePoints();     
     const n = pts.length;          
     for (let i = 0; i < n; i++) {         
         if (isCornerBanded(i, n) && radii[i] > 0 && radii[i] < 50) {              
@@ -152,14 +151,13 @@ function validateRadii() {
     let bandingBroken = false;     
     for (let i = 0; i < n; i++) if (isCornerBanded(i, n) && radii[i] > 0 && radii[i] < 49.9) bandingBroken = true;          
     
-    // Tiered Size Warnings injected here
     const xs = pts.map(p => p[0]);
     const ys = pts.map(p => p[1]);
     const w = Math.max(...xs) - Math.min(...xs);
     const h = Math.max(...ys) - Math.min(...ys);
     const maxDim = Math.max(w, h);
     const minDim = Math.min(w, h);
-    const warnEl = document.getElementById("radiusWarning"); // Re-using your warning box class styling
+    const warnEl = document.getElementById("radiusWarning");
     
     let sizeWarning = "";
     if (maxDim > 3050 || minDim > 2030) {
@@ -171,9 +169,9 @@ function validateRadii() {
     }
 
     warnEl.style.display = (conflict || changed || bandingBroken || sizeWarning !== "") ? "block" : "none";     
-    if (bandingBroken) warnEl.innerHTML = sizeWarning + "<br>⚠️ Edge too short! Radii scaled down to prevent overlap, but banded corners require 50mm+ to flex safely.";     
-    else if (conflict) warnEl.innerHTML = sizeWarning + "<br>⚠️ Radii adjusted! Banded corners must be 0mm (sharp joint) or 50mm+ radius to flex.";     
-    else if (changed) warnEl.innerHTML = sizeWarning + "<br>⚠️ Radii scaled down to prevent corners overlapping.";
+    if (bandingBroken) warnEl.innerHTML = sizeWarning + (sizeWarning ? "<br>" : "") + "⚠️ Edge too short! Radii scaled down to prevent overlap, but banded corners require 50mm+ to flex safely.";     
+    else if (conflict) warnEl.innerHTML = sizeWarning + (sizeWarning ? "<br>" : "") + "⚠️ Radii adjusted! Banded corners must be 0mm (sharp joint) or 50mm+ radius to flex.";     
+    else if (changed) warnEl.innerHTML = sizeWarning + (sizeWarning ? "<br>" : "") + "⚠️ Radii scaled down to prevent corners overlapping.";
     else if (sizeWarning) warnEl.innerHTML = sizeWarning;
 }
 
@@ -190,7 +188,6 @@ function getBasePoints() {
     return [[0,0], [B,0], [D + C, A], [D, A]]; 
 }
 
-// Wrapper to apply rotation to the base points
 function getPoints() {
     let pts = getBasePoints();
     if (rotationAngle === 0) return pts;
@@ -211,7 +208,6 @@ function getPoints() {
         rotated.push([nx, ny]);
     }
     
-    // Normalize to origin (0,0) so canvas centers correctly
     const minX = Math.min(...rotated.map(p => p[0]));
     const minY = Math.min(...rotated.map(p => p[1]));
     return rotated.map(p => [p[0] - minX, p[1] - minY]);
@@ -371,7 +367,7 @@ function drawTrapezium(targetCanvas = null) {
     }          
     
     let screenPts = pts.map(p => [p[0], shapeH - p[1]]);     
-    drawDimensions(ctx, screenPts, scale, offX, offY);     
+    if (rotationAngle === 0) drawDimensions(ctx, screenPts, scale, offX, offY);     
     
     if (highlightedCorner !== -1 && !targetCanvas) {         
         const cp = crns[highlightedCorner]; ctx.beginPath();          
