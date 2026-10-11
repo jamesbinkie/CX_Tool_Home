@@ -5,10 +5,15 @@ function rotatePart() {
     updateUI();
 }
 
+function getEdgeNames() {
+    const baseNames = ["Bottom", "Right", "Top", "Left"];
+    const shift = (rotationAngle / 90) % 4;
+    return baseNames.map((_, i) => baseNames[(i + 4 - shift) % 4]);
+}
+
 let highlightedCorner = -1;  
 let currentSections = []; 
 const bandingColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f"]; 
-const edgeNames = ["Top", "Right", "Bottom", "Left"]; 
 
 window.onload = () => {     
     const inputs = ["A", "B", "C", "D", "rad0", "rad1", "rad2", "rad3"];     
@@ -293,7 +298,11 @@ function updateBandingUI(radii) {
     if (currentSections.length > 0 && container.children.length > 0) {         
         currentSections.forEach((sec, sIdx) => { const cb = document.getElementById(`bandSec${sIdx}`); let isChecked = cb ? cb.checked : false; sec.forEach(edge => oldEdgeBanded[edge] = isChecked); });     
     }     
-    currentSections = sections;          
+    currentSections = sections; 
+    
+    // Use the dynamic edge names linked to screen position
+    const edgeNames = getEdgeNames();          
+    
     let html = `<label style="grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; font-weight: bold; margin-bottom: 5px;"><input type="checkbox" id="bandAll"> Band All</label>`;          
     sections.forEach((sec, idx) => {         
         let color = bandingColors[idx % bandingColors.length], names = sec.map(e => edgeNames[e]).join(" + "), shouldCheck = sec.some(edge => oldEdgeBanded[edge]);         
@@ -378,40 +387,70 @@ function drawTrapezium(targetCanvas = null) {
     } 
 }
 
+function drawOffsetDim(ctx, p1, p2, label, offset, scaleFactor, flip = false) {
+    const dx = p2[0] - p1[0], dy = p2[1] - p1[1];
+    const len = Math.hypot(dx, dy);
+    if (len < 0.1) return;
+    
+    let nx = -dy / len, ny = dx / len;
+    if (flip) { nx = -nx; ny = -ny; }
+    
+    const lineX1 = p1[0] + nx * offset, lineY1 = p1[1] + ny * offset;
+    const lineX2 = p2[0] + nx * offset, lineY2 = p2[1] + ny * offset;
+    
+    ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); 
+    ctx.strokeStyle = "#444"; ctx.lineWidth = 1.5 * scaleFactor; ctx.stroke();     
+    
+    const s = 10 * scaleFactor; const angle = Math.atan2(dy, dx);
+    ctx.beginPath(); ctx.moveTo(lineX1, lineY1); 
+    ctx.lineTo(lineX1 + s*Math.cos(angle - Math.PI/6), lineY1 + s*Math.sin(angle - Math.PI/6)); 
+    ctx.lineTo(lineX1 + s*Math.cos(angle + Math.PI/6), lineY1 + s*Math.sin(angle + Math.PI/6)); 
+    ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
+    
+    ctx.beginPath(); ctx.moveTo(lineX2, lineY2); 
+    ctx.lineTo(lineX2 - s*Math.cos(angle - Math.PI/6), lineY2 - s*Math.sin(angle - Math.PI/6)); 
+    ctx.lineTo(lineX2 - s*Math.cos(angle + Math.PI/6), lineY2 - s*Math.sin(angle + Math.PI/6)); 
+    ctx.closePath(); ctx.fill();
+    
+    ctx.font = `bold ${Math.max(12, 14 * scaleFactor)}px Arial`; 
+    ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const mx = (lineX1 + lineX2) / 2, my = (lineY1 + lineY2) / 2;
+    const textOff = 12 * scaleFactor;
+    
+    const txtW = ctx.measureText(label).width + 8;
+    const txtH = 16 * scaleFactor;
+    ctx.fillStyle = "#dfe8f2"; 
+    ctx.fillRect(mx + nx * textOff - txtW/2, my + ny * textOff - txtH/2, txtW, txtH);
+    
+    ctx.fillStyle = "#000";
+    ctx.fillText(label, mx + nx * textOff, my + ny * textOff);
+}
+
 function drawDimensions(ctx, pts, scale, offsetX, offsetY) {     
-    const xs = pts.map(p => p[0]);
-    const ys = pts.map(p => p[1]);
+    const scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1;
+    const off = 45 * scaleFactor;
+    const A = parseFloat(document.getElementById("A").value);
+    const B = parseFloat(document.getElementById("B").value);
+    const C = parseFloat(document.getElementById("C").value);
+    
+    // Draw B and C using edges
+    drawOffsetDim(ctx, pts[1], pts[0], `B: ${B}mm`, off, scaleFactor);
+    drawOffsetDim(ctx, pts[3], pts[2], `C: ${C}mm`, off, scaleFactor);
+    
+    // Draw Overall Height (A) bounded
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
     const minX = Math.min(...xs), maxX = Math.max(...xs);
     const minY = Math.min(...ys), maxY = Math.max(...ys);
-    const W = maxX - minX;
-    const H = maxY - minY;
-
-    drawDimLine(ctx, minX * scale + offsetX, maxY * scale + offsetY, maxX * scale + offsetX, maxY * scale + offsetY, `${Number(W.toFixed(2))} mm`, "below");     
-    drawDimLine(ctx, minX * scale + offsetX, minY * scale + offsetY, minX * scale + offsetX, maxY * scale + offsetY, `${Number(H.toFixed(2))} mm`, "left"); 
     
     if (rotationAngle === 0) {
-        const TR = pts[2], TL = pts[3];
-        drawDimLine(ctx, TL[0] * scale + offsetX, TL[1] * scale + offsetY, TR[0] * scale + offsetX, TR[1] * scale + offsetY, `${Number((Math.abs(TR[0] - TL[0])).toFixed(2))} mm`, "above"); 
+        drawOffsetDim(ctx, [minX, maxY], [minX, minY], `A: ${A}mm`, off, scaleFactor);
+    } else if (rotationAngle === 90) {
+        drawOffsetDim(ctx, [minX, minY], [maxX, minY], `A: ${A}mm`, off, scaleFactor);
+    } else if (rotationAngle === 180) {
+        drawOffsetDim(ctx, [maxX, minY], [maxX, maxY], `A: ${A}mm`, off, scaleFactor);
+    } else if (rotationAngle === 270) {
+        drawOffsetDim(ctx, [maxX, maxY], [minX, maxY], `A: ${A}mm`, off, scaleFactor);
     }
-}
-
-function drawDimLine(ctx, x1, y1, x2, y2, label, position) {     
-    const scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1;     
-    const offset = 25 * scaleFactor, textOffset = 15 * scaleFactor;     
-    ctx.font = `bold ${Math.max(12, 16 * scaleFactor)}px Arial`;     
-    let lineX1 = x1, lineY1 = y1, lineX2 = x2, lineY2 = y2;     
-    if (position === "above") { lineY1 -= offset; lineY2 -= offset; } else if (position === "below") { lineY1 += offset; lineY2 += offset; } else if (position === "left") { lineX1 -= offset; lineX2 -= offset; } else if (position === "right") { lineX1 += offset; lineX2 += offset; }     
-    ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, 1.5 * scaleFactor); ctx.stroke();     
-    drawArrow(ctx, lineX1, lineY1, lineX2, lineY2, scaleFactor); drawArrow(ctx, lineX2, lineY2, lineX1, lineY1, scaleFactor);     
-    ctx.textAlign = (position === "left") ? "right" : (position === "right" ? "left" : "center"); ctx.textBaseline = (position === "below") ? "top" : (position === "above" ? "bottom" : "middle");     
-    let textX = (lineX1 + lineX2) / 2, textY = (lineY1 + lineY2) / 2;     
-    if (position === "above") textY -= textOffset; else if (position === "below") textY += textOffset; else if (position === "left") textX -= textOffset; else if (position === "right") textX += textOffset;     
-    ctx.fillStyle = "#000"; ctx.fillText(label, textX, textY); 
-}
-
-function drawArrow(ctx, x1, y1, x2, y2, scaleFactor) {     
-    const size = 10 * scaleFactor, arrowOffset = 8 * scaleFactor, angle = Math.atan2(y2 - y1, x2 - x1), tipX = x2 + arrowOffset * Math.cos(angle), tipY = y2 + arrowOffset * Math.sin(angle);     
-    ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.lineTo(tipX - size * Math.cos(angle - Math.PI / 6), tipY - size * Math.sin(angle - Math.PI / 6)); ctx.lineTo(tipX - size * Math.cos(angle + Math.PI / 6), tipY - size * Math.sin(angle + Math.PI / 6)); ctx.closePath(); ctx.fillStyle = "#000"; ctx.fill(); 
 }
 
 function getDXFPolyline(layer, corners, isClosed, sec = null) {     
