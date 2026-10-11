@@ -260,12 +260,14 @@ function getPoints() {
     return rotated.map(p => [p[0] - minX, p[1] - minY]);
 }
 
-function intersectLines(p1, p2, p3, p4) {     
-    let denom = (p1.x - p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x - p4.x);     
-    if (Math.abs(denom) < 0.0001) return {x: p2.x, y: p2.y};     
-    let x = ((p1.x*p2.y - p1.y*p2.x)*(p3.x - p4.x) - (p1.x - p2.x)*(p3.x*p4.y - p3.y*p4.x)) / denom;     
-    let y = ((p1.x*p2.y - p1.y*p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x*p4.y - p3.y*p4.x)) / denom;     
-    return {x, y}; 
+// Fixed intersectLines to correctly read from the 2 object parameters
+function intersectLines(l1, l2) {
+    const denom = (l1.x1 - l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 - l2.x2);
+    if (Math.abs(denom) < 0.0001) return { x: l1.x2, y: l1.y2 };
+    return {
+        x: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.x1 - l2.x2) - (l1.x1 - l1.x2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom,
+        y: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom
+    };
 }
 
 function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {     
@@ -282,7 +284,7 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     let rawCorners = [];     
     for (let i = 0; i < n; i++) {         
         const ePrev = edges[(i + n - 1) % n], eNext = edges[i];         
-        const C_off = intersectLines(ePrev.offL.x1 ? ePrev.offL : {x1: ePrev.off1.x, y1: ePrev.off1.y, x2: ePrev.off2.x, y2: ePrev.off2.y}, eNext.offL ? eNext.offL : {x1: eNext.off1.x, y1: eNext.off1.y, x2: eNext.off2.x, y2: eNext.off2.y});         
+        const C_off = intersectLines(ePrev.offL, eNext.offL);         
         let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy;         
         let alpha = Math.atan2(cross, dot);         
         let isConvex = (cross * CW) > 0;         
@@ -487,6 +489,7 @@ function drawDimensions(ctx, crns, scale) {
     const A = parseFloat(document.getElementById("A").value);
     const B = parseFloat(document.getElementById("B").value);
     const C = parseFloat(document.getElementById("C").value);
+    const D = parseFloat(document.getElementById("D").value);
     
     function drawEdgeDim(idx, label, dimId) {
         const p1 = crns[idx].C_off;
