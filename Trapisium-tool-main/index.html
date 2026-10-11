@@ -15,19 +15,15 @@
   </style>
 </head>
 <body>
-
 <div class="nav-header">
-  <button onclick="window.location.href='../index.html'" style="background: #4f545c;">← Back to Home</button>
+  <button onclick="window.location.href='../index.html'" style="background: #4f545c;">  Back to Home</button>
 </div>
-
 <div class="container">
   <h2>Trapezium Generator (mm)</h2>
-  <div id="radiusWarning" class="warning-box">⚠️ Corner radii adjusted! Ensure banded corners have at least a 50mm radius and do not overlap.</div>
-
+  <div id="radiusWarning" class="warning-box"></div>
   <div class="main-layout">
     <div class="left-col">
       <div class="file-controls panel">
-        <button onclick="rotatePart()">Rotate 90°</button>
         <h3>Export Part</h3>
         <div style="display: flex; align-items: flex-end; gap: 15px; flex-wrap: wrap;">
           <label style="flex: 1; min-width: 150px;">File Name: <input id="fileName" type="text" value="trapezium" style="width: 100%;"></label>
@@ -37,26 +33,27 @@
       </div>
       <canvas id="canvas"></canvas>
     </div>
-
     <div class="right-col">
       <div class="controls panel">
-        <h3>Dimensions</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #4f545c; margin-bottom: 15px; padding-bottom: 8px;">
+            <h3 style="margin: 0; border: none; padding-bottom: 0;">Dimensions</h3>
+            <button onclick="rotatePart()" style="padding: 6px 12px; font-size: 12px; background: #4f545c;">Rotate 90°</button>
+        </div>
         <div style="display: flex; flex-wrap: wrap; gap: 15px 25px;">
           <label class="full-width">Type:
             <select id="type">
-            <option value="regular">Regular</option>
-            <option value="right">Right</option>
-            <option value="left">Left</option>
-            <option value="irregular">Irregular</option>
+                <option value="regular">Regular</option>
+                <option value="right">Right</option>
+                <option value="left">Left</option>
+                <option value="irregular">Irregular</option>
             </select>
           </label>
-          <label>A (Height):<input id="A" type="number" value="500" min="100" max="2440" onclick="this.select()"><div class="range">Min 100 mm — Max 2440 mm</div></label>
-          <label>B (Bottom Width):<input id="B" type="number" value="500" min="50" max="2440" onclick="this.select()"><div class="range">Min 50 mm — Max 2440 mm</div></label>
-          <label>C (Top Width):<input id="C" type="number" value="200" min="20" onclick="this.select()"><div class="range">Min 20 mm — Max <span id="CmaxLabel">499</span> mm</div></label>
-          <label id="Dlabel">D (Offset):<input id="D" type="number" value="0" min="0" onclick="this.select()"><div class="range">0 mm — Max <span id="DmaxLabel">0</span> mm</div></label>
+          <label>A (Height):<input id="A" type="number" value="500" min="100" max="3050" onclick="this.select()"><div class="range">Min 100 mm   Max 3050 mm</div></label>
+          <label>B (Bottom Width):<input id="B" type="number" value="500" min="50" max="3050" onclick="this.select()"><div class="range">Min 50 mm   Max 3050 mm</div></label>
+          <label>C (Top Width):<input id="C" type="number" value="200" min="20" onclick="this.select()"><div class="range">Min 20 mm   Max <span id="CmaxLabel">499</span> mm</div></label>
+          <label id="Dlabel">D (Offset):<input id="D" type="number" value="0" min="0" onclick="this.select()"><div class="range">0 mm   Max <span id="DmaxLabel">0</span> mm</div></label>
         </div>
       </div>
-
       <div class="panel">
         <h3>Corner Radii</h3>
         <p style="font-size: 11px; color: #b5bac1; margin-top: -5px; margin-bottom: 12px;">Hover to highlight on diagram. Min 50mm if banding flows through.</p>
@@ -67,7 +64,6 @@
             <div class="corner-input-wrap" data-corner="3"><label>Corner 4 (Btm L)</label><input type="number" id="rad3" value="0" min="0"></div>
         </div>
       </div>
-
       <div class="edge-controls panel">
         <h3>Edge Banding</h3>
         <div id="dynamic-banding-controls" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px 15px; align-items: center;"></div>
@@ -75,8 +71,7 @@
     </div>
   </div>
 </div>
-<div id="versionLabel">v4.1.13</div>
-
+<div id="versionLabel">v4.2.0</div>
 <script src="script.js"></script>
 </body>
 </html>
