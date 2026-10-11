@@ -12,6 +12,8 @@
     .corner-input-wrap { display: flex; flex-direction: column; }
     .corner-input-wrap label { font-size: 12px; color: #b5bac1; margin-bottom: 5px; font-weight: bold; }
     .corner-input-wrap input:focus { border-color: #009fe3; outline: none; }
+    .dim-wrap { transition: all 0.2s ease; padding: 4px; border-radius: 6px; }
+    .dim-wrap:hover { background: rgba(0, 159, 227, 0.1); box-shadow: inset 0 0 0 1px #009fe3; }
   </style>
 </head>
 <body>
@@ -48,10 +50,10 @@
                 <option value="irregular">Irregular</option>
             </select>
           </label>
-          <label>A (Height):<input id="A" type="number" value="500" min="100" max="3050" onclick="this.select()"><div class="range">Min 100 mm   Max 3050 mm</div></label>
-          <label>B (Bottom Width):<input id="B" type="number" value="500" min="50" max="3050" onclick="this.select()"><div class="range">Min 50 mm   Max 3050 mm</div></label>
-          <label>C (Top Width):<input id="C" type="number" value="200" min="20" onclick="this.select()"><div class="range">Min 20 mm   Max <span id="CmaxLabel">499</span> mm</div></label>
-          <label id="Dlabel">D (Offset):<input id="D" type="number" value="0" min="0" onclick="this.select()"><div class="range">0 mm   Max <span id="DmaxLabel">0</span> mm</div></label>
+          <label class="dim-wrap" data-dim="A"><span id="labelA">A (Height):</span><input id="A" type="number" value="500" min="100" max="3050" onclick="this.select()"><div class="range">Min 100 mm   Max 3050 mm</div></label>
+          <label class="dim-wrap" data-dim="B"><span id="labelB">B (Bottom Width):</span><input id="B" type="number" value="500" min="50" max="3050" onclick="this.select()"><div class="range">Min 50 mm   Max 3050 mm</div></label>
+          <label class="dim-wrap" data-dim="C"><span id="labelC">C (Top Width):</span><input id="C" type="number" value="200" min="20" onclick="this.select()"><div class="range">Min 20 mm   Max <span id="CmaxLabel">499</span> mm</div></label>
+          <label class="dim-wrap" data-dim="D" id="DlabelWrap"><span id="labelD">D (Offset):</span><input id="D" type="number" value="0" min="0" onclick="this.select()"><div class="range">0 mm   Max <span id="DmaxLabel">0</span> mm</div></label>
         </div>
       </div>
       <div class="panel">
@@ -71,7 +73,7 @@
     </div>
   </div>
 </div>
-<div id="versionLabel">v4.5.0</div>
+<div id="versionLabel">v4.6.0</div>
 <script src="script.js"></script>
 </body>
 </html>
