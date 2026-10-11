@@ -367,7 +367,7 @@ function drawTrapezium(targetCanvas = null) {
     }          
     
     let screenPts = pts.map(p => [p[0], shapeH - p[1]]);     
-    if (rotationAngle === 0) drawDimensions(ctx, screenPts, scale, offX, offY);     
+    drawDimensions(ctx, screenPts, scale, offX, offY);     
     
     if (highlightedCorner !== -1 && !targetCanvas) {         
         const cp = crns[highlightedCorner]; ctx.beginPath();          
@@ -379,12 +379,20 @@ function drawTrapezium(targetCanvas = null) {
 }
 
 function drawDimensions(ctx, pts, scale, offsetX, offsetY) {     
-    const TL = pts[3], TR = pts[2], BR = pts[1], BL = pts[0];     
-    drawDimLine(ctx, TL[0] * scale + offsetX, TL[1] * scale + offsetY, TR[0] * scale + offsetX, TR[1] * scale + offsetY, `${Number((Math.abs(TR[0] - TL[0])).toFixed(2))} mm`, "above");     
-    drawDimLine(ctx, BL[0] * scale + offsetX, BL[1] * scale + offsetY, BR[0] * scale + offsetX, BR[1] * scale + offsetY, `${Number((Math.abs(BR[0] - BL[0])).toFixed(2))} mm`, "below");     
-    const shapeLeft = Math.min(TL[0] * scale + offsetX, BL[0] * scale + offsetX), scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1, dimOffset = 25 * scaleFactor, spaceLeft = shapeLeft, spaceRight = ctx.canvas.width - Math.max(TR[0] * scale + offsetX, BR[0] * scale + offsetX);     
-    let position = (spaceRight > spaceLeft) ? "right" : "left", dimX = (position === "right") ? Math.max(TR[0] * scale + offsetX, BR[0] * scale + offsetX) + dimOffset : shapeLeft - dimOffset;     
-    drawDimLine(ctx, dimX, TL[1] * scale + offsetY, dimX, BL[1] * scale + offsetY, `${Number((Math.abs(BL[1] - TL[1])).toFixed(2))} mm`, position); 
+    const xs = pts.map(p => p[0]);
+    const ys = pts.map(p => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const W = maxX - minX;
+    const H = maxY - minY;
+
+    drawDimLine(ctx, minX * scale + offsetX, maxY * scale + offsetY, maxX * scale + offsetX, maxY * scale + offsetY, `${Number(W.toFixed(2))} mm`, "below");     
+    drawDimLine(ctx, minX * scale + offsetX, minY * scale + offsetY, minX * scale + offsetX, maxY * scale + offsetY, `${Number(H.toFixed(2))} mm`, "left"); 
+    
+    if (rotationAngle === 0) {
+        const TR = pts[2], TL = pts[3];
+        drawDimLine(ctx, TL[0] * scale + offsetX, TL[1] * scale + offsetY, TR[0] * scale + offsetX, TR[1] * scale + offsetY, `${Number((Math.abs(TR[0] - TL[0])).toFixed(2))} mm`, "above"); 
+    }
 }
 
 function drawDimLine(ctx, x1, y1, x2, y2, label, position) {     
