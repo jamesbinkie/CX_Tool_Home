@@ -9,15 +9,15 @@ function getEdgeNames() {
     const isLeft = document.getElementById("type").value === "left";
     const rightNames = [
         ["Bottom", "Right Outer", "Inner Top", "Inner Left", "Top", "Left Outer"],
-        ["Left Outer", "Bottom", "Inner Left", "Inner Bottom", "Right Outer", "Top"],
+        ["Right Outer", "Top", "Inner Left", "Inner Bottom", "Left Outer", "Bottom"],
         ["Top", "Left Outer", "Inner Bottom", "Inner Right", "Bottom", "Right Outer"],
-        ["Right Outer", "Top", "Inner Right", "Inner Top", "Left Outer", "Bottom"]
+        ["Left Outer", "Bottom", "Inner Right", "Inner Top", "Right Outer", "Top"]
     ];
     const leftNames = [
-        ["Bottom", "Right Outer", "Top", "Inner Right", "Inner Top", "Left Outer"],
-        ["Left Outer", "Bottom", "Right Outer", "Inner Top", "Inner Left", "Top"],
-        ["Top", "Left Outer", "Bottom", "Inner Left", "Inner Bottom", "Right Outer"],
-        ["Right Outer", "Top", "Left Outer", "Inner Bottom", "Inner Right", "Bottom"]
+        ["Bottom", "Left Outer", "Inner Top", "Inner Right", "Top", "Right Outer"],
+        ["Right Outer", "Bottom", "Inner Right", "Inner Bottom", "Left Outer", "Top"],
+        ["Top", "Right Outer", "Inner Bottom", "Inner Left", "Bottom", "Left Outer"],
+        ["Left Outer", "Top", "Inner Left", "Inner Top", "Right Outer", "Bottom"]
     ];
     const step = (rotationAngle / 90) % 4;
     return isLeft ? leftNames[step] : rightNames[step];
@@ -242,7 +242,7 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
         R_off = Math.max(0, R_off); if (r === 0) R_off = 0;         
         let d = R_off > 0 ? R_off * Math.abs(Math.tan(alpha / 2)) : 0;                  
         let bulge = Math.tan(alpha / 4);         
-        rawCorners.push({ C_off, R_off, d, alpha, cross, isConvex, bulge });     
+        rawCorners.push({ C_off, R_off, d, alpha, cross, isConvex, bulge, ePrev, eNext });     
     }          
     for (let i = 0; i < n; i++) {         
         let c1 = rawCorners[i], c2 = rawCorners[(i + 1) % n];         
@@ -272,7 +272,7 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
             let vL = Math.hypot(vx, vy) || 1;             
             arcMid = { x: arcCenter.x + (vx/vL)*rc.R_off, y: arcCenter.y + (vy/vL)*rc.R_off };         
         }         
-        corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, bulge });     
+        corners.push({ C_off: rc.C_off, R_off: rc.R_off, arcStart, arcEnd, arcMid, bulge, ePrev });     
     }     
     return corners; 
 }
@@ -334,63 +334,6 @@ function updateBandingUI(radii) {
     secCbs.forEach(cb => { cb.addEventListener("change", () => { allCb.checked = Array.from(secCbs).every(c => c.checked); validateRadii(); drawLShape(); }); }); 
 }
 
-function drawOffsetDim(ctx, p1, p2, label, offset, scaleFactor, flip = false) {
-    const dx = p2[0] - p1[0], dy = p2[1] - p1[1];
-    const len = Math.hypot(dx, dy);
-    if (len < 0.1) return;
-    
-    let nx = -dy / len, ny = dx / len;
-    if (flip) { nx = -nx; ny = -ny; }
-    
-    const lineX1 = p1[0] + nx * offset, lineY1 = p1[1] + ny * offset;
-    const lineX2 = p2[0] + nx * offset, lineY2 = p2[1] + ny * offset;
-    
-    ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); 
-    ctx.strokeStyle = "#444"; ctx.lineWidth = 1.5 * scaleFactor; ctx.stroke();     
-    
-    const s = 10 * scaleFactor; const angle = Math.atan2(dy, dx);
-    ctx.beginPath(); ctx.moveTo(lineX1, lineY1); 
-    ctx.lineTo(lineX1 + s*Math.cos(angle - Math.PI/6), lineY1 + s*Math.sin(angle - Math.PI/6)); 
-    ctx.lineTo(lineX1 + s*Math.cos(angle + Math.PI/6), lineY1 + s*Math.sin(angle + Math.PI/6)); 
-    ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
-    
-    ctx.beginPath(); ctx.moveTo(lineX2, lineY2); 
-    ctx.lineTo(lineX2 - s*Math.cos(angle - Math.PI/6), lineY2 - s*Math.sin(angle - Math.PI/6)); 
-    ctx.lineTo(lineX2 - s*Math.cos(angle + Math.PI/6), lineY2 - s*Math.sin(angle + Math.PI/6)); 
-    ctx.closePath(); ctx.fill();
-    
-    ctx.font = `bold ${Math.max(12, 14 * scaleFactor)}px Arial`; 
-    ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    const mx = (lineX1 + lineX2) / 2, my = (lineY1 + lineY2) / 2;
-    const textOff = 12 * scaleFactor;
-    
-    const txtW = ctx.measureText(label).width + 8;
-    const txtH = 16 * scaleFactor;
-    ctx.fillStyle = "#dfe8f2"; 
-    ctx.fillRect(mx + nx * textOff - txtW/2, my + ny * textOff - txtH/2, txtW, txtH);
-    
-    ctx.fillStyle = "#000";
-    ctx.fillText(label, mx + nx * textOff, my + ny * textOff);
-}
-
-function drawLDimensions(ctx, pts, scale, offX, offY) {     
-    const scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1;
-    const off = 45 * scaleFactor;
-    const A = parseFloat(document.getElementById("totalW").value);
-    const B = parseFloat(document.getElementById("totalH").value);
-    const C = parseFloat(document.getElementById("legW").value);
-    const D = parseFloat(document.getElementById("legH").value);
-    const isLeft = document.getElementById("type").value === "left";
-    
-    // Convert to screen points array to easily grab edges
-    const sp = pts.map(p => [p[0] * scale + offX, p[1] * scale + offY]);
-    
-    drawOffsetDim(ctx, sp[0], sp[1], `A: ${A}mm`, off, scaleFactor, isLeft);
-    drawOffsetDim(ctx, sp[1], sp[2], `D: ${D}mm`, off, scaleFactor, isLeft);
-    drawOffsetDim(ctx, sp[4], sp[5], `C: ${C}mm`, off, scaleFactor, isLeft);
-    drawOffsetDim(ctx, sp[5], sp[0], `B: ${B}mm`, off, scaleFactor, isLeft);
-}
-
 function drawLShape(targetCanvas = null) {     
     const canvas = targetCanvas || document.getElementById("canvas"), ctx = canvas.getContext("2d");     
     if (!targetCanvas) {         
@@ -407,6 +350,7 @@ function drawLShape(targetCanvas = null) {
     
     let screenPts = pts.map(p => [p[0], shapeH - p[1]]);     
     const crns = generatePathData(screenPts, 0, radii, scale, offX, offY);     
+    
     ctx.beginPath(); ctx.moveTo(crns[0].arcStart.x, crns[0].arcStart.y);     
     for (let i = 0; i < n; i++) {         
         let c = crns[i];         
@@ -443,7 +387,7 @@ function drawLShape(targetCanvas = null) {
         });     
     }     
     
-    drawLDimensions(ctx, pts, scale, offX, offY);
+    drawLDimensions(ctx, crns, scale);
     
     if (highlightedCorner !== -1 && !targetCanvas) {         
         const isLeft = document.getElementById("type").value === "left";         
@@ -454,6 +398,61 @@ function drawLShape(targetCanvas = null) {
         ctx.arc(cp.arcMid.x, cp.arcMid.y, 20, 0, Math.PI * 2);          
         ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();     
     } 
+}
+
+function drawLDimensions(ctx, crns, scale) {     
+    const scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1;
+    const off = 45 * scaleFactor;
+    
+    const A = parseFloat(document.getElementById("totalW").value);
+    const B = parseFloat(document.getElementById("totalH").value);
+    const C = parseFloat(document.getElementById("legW").value);
+    const D = parseFloat(document.getElementById("legH").value);
+    
+    function drawEdgeDim(idx, label) {
+        const p1 = crns[idx].C_off;
+        const p2 = crns[(idx + 1) % crns.length].C_off;
+        const edge = crns[(idx + 1) % crns.length].ePrev; 
+        
+        const nx = edge.nx, ny = edge.ny;
+        const lineX1 = p1.x + nx * off, lineY1 = p1.y + ny * off;
+        const lineX2 = p2.x + nx * off, lineY2 = p2.y + ny * off;
+        
+        ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); 
+        ctx.strokeStyle = "#444"; ctx.lineWidth = 1.5 * scaleFactor; ctx.stroke();     
+        
+        const s = 10 * scaleFactor; 
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const angle = Math.atan2(dy, dx);
+        
+        ctx.beginPath(); ctx.moveTo(lineX1, lineY1); 
+        ctx.lineTo(lineX1 + s*Math.cos(angle - Math.PI/6), lineY1 + s*Math.sin(angle - Math.PI/6)); 
+        ctx.lineTo(lineX1 + s*Math.cos(angle + Math.PI/6), lineY1 + s*Math.sin(angle + Math.PI/6)); 
+        ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
+        
+        ctx.beginPath(); ctx.moveTo(lineX2, lineY2); 
+        ctx.lineTo(lineX2 - s*Math.cos(angle - Math.PI/6), lineY2 - s*Math.sin(angle - Math.PI/6)); 
+        ctx.lineTo(lineX2 - s*Math.cos(angle + Math.PI/6), lineY2 - s*Math.sin(angle + Math.PI/6)); 
+        ctx.closePath(); ctx.fill();
+        
+        ctx.font = `bold ${Math.max(12, 14 * scaleFactor)}px Segoe UI, Arial`; 
+        ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        const mx = (lineX1 + lineX2) / 2, my = (lineY1 + lineY2) / 2;
+        const textOff = 16 * scaleFactor;
+        
+        const txtW = ctx.measureText(label).width + 10;
+        const txtH = 20 * scaleFactor;
+        ctx.fillStyle = "#dfe8f2"; 
+        ctx.fillRect(mx + nx * textOff - txtW/2, my + ny * textOff - txtH/2, txtW, txtH);
+        
+        ctx.fillStyle = "#000";
+        ctx.fillText(label, mx + nx * textOff, my + ny * textOff);
+    }
+
+    drawEdgeDim(0, `A: ${A}mm`);
+    drawEdgeDim(1, `D: ${D}mm`);
+    drawEdgeDim(4, `C: ${C}mm`);
+    drawEdgeDim(5, `B: ${B}mm`);
 }
 
 function downloadPNG() {     
