@@ -18,9 +18,9 @@ function getEdgeNames() {
 function updateCornerLabels() {
     const names = [
         ["Btm L", "Btm R", "Top R", "Top L"],
-        ["Top L", "Btm L", "Btm R", "Top R"],
+        ["Btm R", "Top R", "Top L", "Btm L"],
         ["Top R", "Top L", "Btm L", "Btm R"],
-        ["Btm R", "Top R", "Top L", "Btm L"]
+        ["Top L", "Btm L", "Btm R", "Top R"]
     ][(rotationAngle / 90) % 4];
     
     document.querySelector('[data-corner="0"] label').textContent = `Corner 1 (${names[0]})`;
@@ -33,9 +33,9 @@ function updateDimensionLabels() {
     const step = (rotationAngle / 90) % 4;
     const names = [
         ["A (Height):", "B (Bottom Width):", "C (Top Width):", "D (Offset):"],
-        ["A (Width):", "B (Left Height):", "C (Right Height):", "D (Offset):"],
+        ["A (Width):", "B (Right Height):", "C (Left Height):", "D (Offset):"],
         ["A (Height):", "B (Top Width):", "C (Bottom Width):", "D (Offset):"],
-        ["A (Width):", "B (Right Height):", "C (Left Height):", "D (Offset):"]
+        ["A (Width):", "B (Left Height):", "C (Right Height):", "D (Offset):"]
     ];
     document.getElementById("labelA").textContent = names[step][0];
     document.getElementById("labelB").textContent = names[step][1];
@@ -450,6 +450,32 @@ function drawTrapezium(targetCanvas = null) {
         });     
     }          
     
+    if (highlightedDim !== null && !targetCanvas) {
+        const edgeMap = { 'A': -1, 'B': 0, 'C': 2, 'D': 3 };
+        const edgeIdx = edgeMap[highlightedDim];
+        
+        ctx.beginPath();
+        if (edgeIdx === -1) {
+            let p1, p2;
+            const minX2 = Math.min(...crns.map(c => c.C_off.x)), maxX2 = Math.max(...crns.map(c => c.C_off.x));
+            const minY2 = Math.min(...crns.map(c => c.C_off.y)), maxY2 = Math.max(...crns.map(c => c.C_off.y));
+            if (rotationAngle === 0) { p1 = {x: minX2, y: maxY2}; p2 = {x: minX2, y: minY2}; }
+            else if (rotationAngle === 90) { p1 = {x: minX2, y: minY2}; p2 = {x: maxX2, y: minY2}; }
+            else if (rotationAngle === 180) { p1 = {x: maxX2, y: minY2}; p2 = {x: maxX2, y: maxY2}; }
+            else if (rotationAngle === 270) { p1 = {x: maxX2, y: maxY2}; p2 = {x: minX2, y: maxY2}; }
+            ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+        } else if (edgeIdx !== undefined && (document.getElementById("type").value !== "regular" || highlightedDim !== 'D')) {
+            const c1 = crns[edgeIdx];
+            const c2 = crns[(edgeIdx + 1) % crns.length];
+            ctx.moveTo(c1.arcEnd.x, c1.arcEnd.y);
+            ctx.lineTo(c2.arcStart.x, c2.arcStart.y);
+        }
+        ctx.strokeStyle = "rgba(0, 159, 227, 0.5)";
+        ctx.lineWidth = 16 * (canvas.width / 1200);
+        ctx.lineCap = "round";
+        ctx.stroke();
+    }
+
     drawDimensions(ctx, crns, scale);     
     
     if (highlightedCorner !== -1 && !targetCanvas) {         
