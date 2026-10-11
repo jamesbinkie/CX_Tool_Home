@@ -5,14 +5,27 @@ function rotatePart() {
     updateUI();
 }
 
+function getEdgeNames() {
+    const isLeft = document.getElementById("type").value === "left";
+    const rightNames = [
+        ["Bottom", "Right Outer", "Inner Top", "Inner Left", "Top", "Left Outer"],
+        ["Left Outer", "Bottom", "Inner Left", "Inner Bottom", "Right Outer", "Top"],
+        ["Top", "Left Outer", "Inner Bottom", "Inner Right", "Bottom", "Right Outer"],
+        ["Right Outer", "Top", "Inner Right", "Inner Top", "Left Outer", "Bottom"]
+    ];
+    const leftNames = [
+        ["Bottom", "Right Outer", "Top", "Inner Right", "Inner Top", "Left Outer"],
+        ["Left Outer", "Bottom", "Right Outer", "Inner Top", "Inner Left", "Top"],
+        ["Top", "Left Outer", "Bottom", "Inner Left", "Inner Bottom", "Right Outer"],
+        ["Right Outer", "Top", "Left Outer", "Inner Bottom", "Inner Right", "Bottom"]
+    ];
+    const step = (rotationAngle / 90) % 4;
+    return isLeft ? leftNames[step] : rightNames[step];
+}
+
 let highlightedCorner = -1; 
 let currentSections = []; 
 const bandingColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"]; 
-
-function getEdgeNames() {     
-    const isLeft = document.getElementById("type").value === "left";     
-    return isLeft ? ["Bottom", "Right Side", "Top", "Inner Left", "Inner Top", "Left Side"] : ["Bottom", "Right Leg", "Inner Top", "Inner Left", "Top", "Left Side"]; 
-}
 
 window.onload = () => {     
     const ids = ["type", "totalW", "totalH", "legW", "legH", "rad0", "rad1", "rad2", "rad3", "rad4", "rad5"];     
@@ -304,7 +317,11 @@ function updateBandingUI(radii) {
     if (currentSections.length > 0 && container.children.length > 0) {         
         currentSections.forEach((sec, sIdx) => { const cb = document.getElementById(`bandSec${sIdx}`); let isChecked = cb ? cb.checked : false; sec.forEach(edge => oldEdgeBanded[edge] = isChecked); });     
     }     
-    currentSections = sections; const edgeNames = getEdgeNames();          
+    currentSections = sections; 
+    
+    // Dynamic edge names linked to screen position
+    const edgeNames = getEdgeNames();          
+    
     let html = `<label style="grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; font-weight: bold; margin-bottom: 5px;"><input type="checkbox" id="bandAll"> Band All</label>`;          
     sections.forEach((sec, idx) => {         
         let color = bandingColors[idx % bandingColors.length], names = sec.map(e => edgeNames[e]).join(" + "), shouldCheck = sec.some(edge => oldEdgeBanded[edge]);         
@@ -315,6 +332,63 @@ function updateBandingUI(radii) {
     allCb.checked = Array.from(secCbs).every(c => c.checked);     
     allCb.addEventListener("change", (e) => { secCbs.forEach(cb => cb.checked = e.target.checked); validateRadii(); drawLShape(); });     
     secCbs.forEach(cb => { cb.addEventListener("change", () => { allCb.checked = Array.from(secCbs).every(c => c.checked); validateRadii(); drawLShape(); }); }); 
+}
+
+function drawOffsetDim(ctx, p1, p2, label, offset, scaleFactor, flip = false) {
+    const dx = p2[0] - p1[0], dy = p2[1] - p1[1];
+    const len = Math.hypot(dx, dy);
+    if (len < 0.1) return;
+    
+    let nx = -dy / len, ny = dx / len;
+    if (flip) { nx = -nx; ny = -ny; }
+    
+    const lineX1 = p1[0] + nx * offset, lineY1 = p1[1] + ny * offset;
+    const lineX2 = p2[0] + nx * offset, lineY2 = p2[1] + ny * offset;
+    
+    ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); 
+    ctx.strokeStyle = "#444"; ctx.lineWidth = 1.5 * scaleFactor; ctx.stroke();     
+    
+    const s = 10 * scaleFactor; const angle = Math.atan2(dy, dx);
+    ctx.beginPath(); ctx.moveTo(lineX1, lineY1); 
+    ctx.lineTo(lineX1 + s*Math.cos(angle - Math.PI/6), lineY1 + s*Math.sin(angle - Math.PI/6)); 
+    ctx.lineTo(lineX1 + s*Math.cos(angle + Math.PI/6), lineY1 + s*Math.sin(angle + Math.PI/6)); 
+    ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
+    
+    ctx.beginPath(); ctx.moveTo(lineX2, lineY2); 
+    ctx.lineTo(lineX2 - s*Math.cos(angle - Math.PI/6), lineY2 - s*Math.sin(angle - Math.PI/6)); 
+    ctx.lineTo(lineX2 - s*Math.cos(angle + Math.PI/6), lineY2 - s*Math.sin(angle + Math.PI/6)); 
+    ctx.closePath(); ctx.fill();
+    
+    ctx.font = `bold ${Math.max(12, 14 * scaleFactor)}px Arial`; 
+    ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const mx = (lineX1 + lineX2) / 2, my = (lineY1 + lineY2) / 2;
+    const textOff = 12 * scaleFactor;
+    
+    const txtW = ctx.measureText(label).width + 8;
+    const txtH = 16 * scaleFactor;
+    ctx.fillStyle = "#dfe8f2"; 
+    ctx.fillRect(mx + nx * textOff - txtW/2, my + ny * textOff - txtH/2, txtW, txtH);
+    
+    ctx.fillStyle = "#000";
+    ctx.fillText(label, mx + nx * textOff, my + ny * textOff);
+}
+
+function drawLDimensions(ctx, pts, scale, offX, offY) {     
+    const scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1;
+    const off = 45 * scaleFactor;
+    const A = parseFloat(document.getElementById("totalW").value);
+    const B = parseFloat(document.getElementById("totalH").value);
+    const C = parseFloat(document.getElementById("legW").value);
+    const D = parseFloat(document.getElementById("legH").value);
+    const isLeft = document.getElementById("type").value === "left";
+    
+    // Convert to screen points array to easily grab edges
+    const sp = pts.map(p => [p[0] * scale + offX, p[1] * scale + offY]);
+    
+    drawOffsetDim(ctx, sp[0], sp[1], `A: ${A}mm`, off, scaleFactor, isLeft);
+    drawOffsetDim(ctx, sp[1], sp[2], `D: ${D}mm`, off, scaleFactor, isLeft);
+    drawOffsetDim(ctx, sp[4], sp[5], `C: ${C}mm`, off, scaleFactor, isLeft);
+    drawOffsetDim(ctx, sp[5], sp[0], `B: ${B}mm`, off, scaleFactor, isLeft);
 }
 
 function drawLShape(targetCanvas = null) {     
@@ -369,7 +443,7 @@ function drawLShape(targetCanvas = null) {
         });     
     }     
     
-    drawLDimensions(ctx, screenPts, scale, offX, offY);
+    drawLDimensions(ctx, pts, scale, offX, offY);
     
     if (highlightedCorner !== -1 && !targetCanvas) {         
         const isLeft = document.getElementById("type").value === "left";         
@@ -380,46 +454,6 @@ function drawLShape(targetCanvas = null) {
         ctx.arc(cp.arcMid.x, cp.arcMid.y, 20, 0, Math.PI * 2);          
         ctx.fillStyle = "rgba(0, 159, 227, 0.25)"; ctx.fill(); ctx.strokeStyle = "#009fe3"; ctx.lineWidth = 2; ctx.stroke();     
     } 
-}
-
-function drawLDimensions(ctx, pts, scale, offX, offY) {     
-    const scaleFactor = Math.min(ctx.canvas.width / 1200, ctx.canvas.height / 800) || 1;     
-    ctx.font = `bold ${Math.max(12, 16 * scaleFactor)}px Segoe UI, Arial`; ctx.fillStyle = "#000"; ctx.textAlign = "center";     
-    
-    const xs = pts.map(p => p[0]);
-    const ys = pts.map(p => p[1]);
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minY = Math.min(...ys), maxY = Math.max(...ys);
-    const W = maxX - minX;
-    const H = maxY - minY;
-
-    const drawDim = (x1, y1, x2, y2, label) => {         
-        const angle = Math.atan2(y2 - y1, x2 - x1), textWidth = ctx.measureText(label).width + (15 * scaleFactor), mx = (x1 + x2) / 2, my = (y1 + y2) / 2;         
-        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(mx - Math.cos(angle)*(textWidth/2), my - Math.sin(angle)*(textWidth/2)); ctx.moveTo(mx + Math.cos(angle)*(textWidth/2), my + Math.sin(angle)*(textWidth/2)); ctx.lineTo(x2, y2);         
-        ctx.strokeStyle = "#444"; ctx.lineWidth = 1.5 * scaleFactor; ctx.stroke();         
-        const s = 10 * scaleFactor; ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - s*Math.cos(angle-Math.PI/6), y2 - s*Math.sin(angle-Math.PI/6)); ctx.lineTo(x2 - s*Math.cos(angle+Math.PI/6), y2 - s*Math.sin(angle+Math.PI/6)); ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();         
-        ctx.fillText(label, mx, my + (5 * scaleFactor));     
-    };          
-
-    const off = 55 * scaleFactor;     
-    drawDim(minX * scale + offX, maxY * scale + offY + off, maxX * scale + offX, maxY * scale + offY + off, `W: ${W.toFixed(2)}mm`);     
-    
-    const bX = (document.getElementById("type").value === "left") ? maxX * scale + offX + off : minX * scale + offX - off;     
-    drawDim(bX, maxY * scale + offY, bX, minY * scale + offY, `H: ${H.toFixed(2)}mm`);     
-    
-    if (rotationAngle === 0) {
-        const A = parseFloat(document.getElementById("totalW").value);
-        const C = parseFloat(document.getElementById("legW").value);
-        const D = parseFloat(document.getElementById("legH").value);
-        const isLeft = document.getElementById("type").value === "left";
-        
-        const cX = isLeft ? offX + A*scale - C*scale : offX;      
-        const cX2 = isLeft ? offX + A*scale : offX + C*scale;     
-        drawDim(cX, minY * scale + offY - (25 * scaleFactor), cX2, minY * scale + offY - (25 * scaleFactor), `C: ${C}mm`);     
-        
-        const dX = isLeft ? offX - off : offX + A*scale + off;     
-        drawDim(dX, maxY * scale + offY, dX, maxY * scale + offY - D*scale, `D: ${D}mm`); 
-    }
 }
 
 function downloadPNG() {     
