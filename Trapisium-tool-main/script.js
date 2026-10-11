@@ -18,9 +18,9 @@ function getEdgeNames() {
 function updateCornerLabels() {
     const names = [
         ["Btm L", "Btm R", "Top R", "Top L"],
-        ["Btm R", "Top R", "Top L", "Btm L"],
+        ["Top L", "Btm L", "Btm R", "Top R"],
         ["Top R", "Top L", "Btm L", "Btm R"],
-        ["Top L", "Btm L", "Btm R", "Top R"]
+        ["Btm R", "Top R", "Top L", "Btm L"]
     ][(rotationAngle / 90) % 4];
     
     document.querySelector('[data-corner="0"] label').textContent = `Corner 1 (${names[0]})`;
@@ -33,9 +33,9 @@ function updateDimensionLabels() {
     const step = (rotationAngle / 90) % 4;
     const names = [
         ["A (Height):", "B (Bottom Width):", "C (Top Width):", "D (Offset):"],
-        ["A (Width):", "B (Right Height):", "C (Left Height):", "D (Offset):"],
+        ["A (Width):", "B (Left Height):", "C (Right Height):", "D (Offset):"],
         ["A (Height):", "B (Top Width):", "C (Bottom Width):", "D (Offset):"],
-        ["A (Width):", "B (Left Height):", "C (Right Height):", "D (Offset):"]
+        ["A (Width):", "B (Right Height):", "C (Left Height):", "D (Offset):"]
     ];
     document.getElementById("labelA").textContent = names[step][0];
     document.getElementById("labelB").textContent = names[step][1];
@@ -260,13 +260,12 @@ function getPoints() {
     return rotated.map(p => [p[0] - minX, p[1] - minY]);
 }
 
-function intersectLines(l1, l2) {     
-    const denom = (l1.x1 - l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 - l2.x2);     
-    if (Math.abs(denom) < 0.0001) return { x: l1.x2, y: l1.y2 };     
-    return { 
-        x: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.x1 - l2.x2) - (l1.x1 - l1.x2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom, 
-        y: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom 
-    }; 
+function intersectLines(p1, p2, p3, p4) {     
+    let denom = (p1.x - p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x - p4.x);     
+    if (Math.abs(denom) < 0.0001) return {x: p2.x, y: p2.y};     
+    let x = ((p1.x*p2.y - p1.y*p2.x)*(p3.x - p4.x) - (p1.x - p2.x)*(p3.x*p4.y - p3.y*p4.x)) / denom;     
+    let y = ((p1.x*p2.y - p1.y*p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x*p4.y - p3.y*p4.x)) / denom;     
+    return {x, y}; 
 }
 
 function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {     
@@ -283,7 +282,7 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     let rawCorners = [];     
     for (let i = 0; i < n; i++) {         
         const ePrev = edges[(i + n - 1) % n], eNext = edges[i];         
-        const C_off = intersectLines(ePrev.offL, eNext.offL);         
+        const C_off = intersectLines(ePrev.offL.x1 ? ePrev.offL : {x1: ePrev.off1.x, y1: ePrev.off1.y, x2: ePrev.off2.x, y2: ePrev.off2.y}, eNext.offL ? eNext.offL : {x1: eNext.off1.x, y1: eNext.off1.y, x2: eNext.off2.x, y2: eNext.off2.y});         
         let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy;         
         let alpha = Math.atan2(cross, dot);         
         let isConvex = (cross * CW) > 0;         
@@ -451,29 +450,26 @@ function drawTrapezium(targetCanvas = null) {
     }          
     
     if (highlightedDim !== null && !targetCanvas) {
-        const edgeMap = { 'A': -1, 'B': 0, 'C': 2, 'D': 3 };
-        const edgeIdx = edgeMap[highlightedDim];
-        
-        ctx.beginPath();
-        if (edgeIdx === -1) {
-            let p1, p2;
-            const minX2 = Math.min(...crns.map(c => c.C_off.x)), maxX2 = Math.max(...crns.map(c => c.C_off.x));
-            const minY2 = Math.min(...crns.map(c => c.C_off.y)), maxY2 = Math.max(...crns.map(c => c.C_off.y));
-            if (rotationAngle === 0) { p1 = {x: minX2, y: maxY2}; p2 = {x: minX2, y: minY2}; }
-            else if (rotationAngle === 90) { p1 = {x: minX2, y: minY2}; p2 = {x: maxX2, y: minY2}; }
-            else if (rotationAngle === 180) { p1 = {x: maxX2, y: minY2}; p2 = {x: maxX2, y: maxY2}; }
-            else if (rotationAngle === 270) { p1 = {x: maxX2, y: maxY2}; p2 = {x: minX2, y: maxY2}; }
-            ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
-        } else if (edgeIdx !== undefined && (document.getElementById("type").value !== "regular" || highlightedDim !== 'D')) {
+        let edgeIdx = undefined;
+        const type = document.getElementById("type").value;
+        if (highlightedDim === 'B') edgeIdx = 0;
+        else if (highlightedDim === 'C') edgeIdx = 2;
+        else if (highlightedDim === 'A') {
+            if (type === 'right') edgeIdx = 3;
+            else if (type === 'left') edgeIdx = 1;
+        }
+
+        if (edgeIdx !== undefined) {
+            ctx.beginPath();
             const c1 = crns[edgeIdx];
             const c2 = crns[(edgeIdx + 1) % crns.length];
             ctx.moveTo(c1.arcEnd.x, c1.arcEnd.y);
             ctx.lineTo(c2.arcStart.x, c2.arcStart.y);
+            ctx.strokeStyle = "rgba(0, 159, 227, 0.5)";
+            ctx.lineWidth = 16 * (canvas.width / 1200);
+            ctx.lineCap = "round";
+            ctx.stroke();
         }
-        ctx.strokeStyle = "rgba(0, 159, 227, 0.5)";
-        ctx.lineWidth = 16 * (canvas.width / 1200);
-        ctx.lineCap = "round";
-        ctx.stroke();
     }
 
     drawDimensions(ctx, crns, scale);     
@@ -491,7 +487,6 @@ function drawDimensions(ctx, crns, scale) {
     const A = parseFloat(document.getElementById("A").value);
     const B = parseFloat(document.getElementById("B").value);
     const C = parseFloat(document.getElementById("C").value);
-    const D = parseFloat(document.getElementById("D").value);
     
     function drawEdgeDim(idx, label, dimId) {
         const p1 = crns[idx].C_off;
@@ -543,62 +538,65 @@ function drawDimensions(ctx, crns, scale) {
 
     drawEdgeDim(0, `B: ${B}mm`, 'B');
     drawEdgeDim(2, `C: ${C}mm`, 'C');
-    if (document.getElementById("type").value !== "regular" && D > 0) {
-        drawEdgeDim(3, `D: ${D}mm`, 'D');
-    }
     
-    // Overall Height Dimension (A)
-    const isAHighlighted = highlightedDim === 'A';
-    const xs = crns.map(c => c.C_off.x);
-    const ys = crns.map(c => c.C_off.y);
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minY = Math.min(...ys), maxY = Math.max(...ys);
-    
-    let p1, p2, nx, ny;
-    if (rotationAngle === 0) { p1 = {x: minX, y: maxY}; p2 = {x: minX, y: minY}; nx = -1; ny = 0; }
-    else if (rotationAngle === 90) { p1 = {x: minX, y: minY}; p2 = {x: maxX, y: minY}; nx = 0; ny = -1; }
-    else if (rotationAngle === 180) { p1 = {x: maxX, y: minY}; p2 = {x: maxX, y: maxY}; nx = 1; ny = 0; }
-    else if (rotationAngle === 270) { p1 = {x: maxX, y: maxY}; p2 = {x: minX, y: maxY}; nx = 0; ny = 1; }
-    
-    const lineX1 = p1.x + nx * off, lineY1 = p1.y + ny * off;
-    const lineX2 = p2.x + nx * off, lineY2 = p2.y + ny * off;
-    
-    ctx.beginPath(); 
-    ctx.moveTo(p1.x + nx * 5, p1.y + ny * 5); ctx.lineTo(lineX1, lineY1);
-    ctx.moveTo(p2.x + nx * 5, p2.y + ny * 5); ctx.lineTo(lineX2, lineY2);
-    ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = 1; ctx.stroke();
+    const type = document.getElementById("type").value;
+    if (type === "right") {
+        drawEdgeDim(3, `A: ${A}mm`, 'A');
+    } else if (type === "left") {
+        drawEdgeDim(1, `A: ${A}mm`, 'A');
+    } else {
+        const isAHighlighted = highlightedDim === 'A';
+        const xs = crns.map(c => c.C_off.x);
+        const ys = crns.map(c => c.C_off.y);
+        const minX = Math.min(...xs), maxX = Math.max(...xs);
+        const minY = Math.min(...ys), maxY = Math.max(...ys);
+        
+        let p1, p2, nx, ny;
+        if (rotationAngle === 0) { p1 = {x: minX, y: maxY}; p2 = {x: minX, y: minY}; nx = -1; ny = 0; }
+        else if (rotationAngle === 90) { p1 = {x: minX, y: minY}; p2 = {x: maxX, y: minY}; nx = 0; ny = -1; }
+        else if (rotationAngle === 180) { p1 = {x: maxX, y: minY}; p2 = {x: maxX, y: maxY}; nx = 1; ny = 0; }
+        else if (rotationAngle === 270) { p1 = {x: maxX, y: maxY}; p2 = {x: minX, y: maxY}; nx = 0; ny = 1; }
+        
+        const lineX1 = p1.x + nx * off, lineY1 = p1.y + ny * off;
+        const lineX2 = p2.x + nx * off, lineY2 = p2.y + ny * off;
+        
+        ctx.beginPath(); 
+        ctx.moveTo(p1.x + nx * 5, p1.y + ny * 5); ctx.lineTo(lineX1, lineY1);
+        ctx.moveTo(p2.x + nx * 5, p2.y + ny * 5); ctx.lineTo(lineX2, lineY2);
+        ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = 1; ctx.stroke();
 
-    ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); 
-    ctx.strokeStyle = isAHighlighted ? "#009fe3" : "#444"; 
-    ctx.lineWidth = (isAHighlighted ? 3 : 1.5) * scaleFactor; 
-    ctx.stroke();     
-    
-    const s = 10 * scaleFactor; 
-    const dx = p2.x - p1.x, dy = p2.y - p1.y;
-    const angle = Math.atan2(dy, dx);
-    
-    ctx.beginPath(); ctx.moveTo(lineX1, lineY1); 
-    ctx.lineTo(lineX1 + s*Math.cos(angle - Math.PI/6), lineY1 + s*Math.sin(angle - Math.PI/6)); 
-    ctx.lineTo(lineX1 + s*Math.cos(angle + Math.PI/6), lineY1 + s*Math.sin(angle + Math.PI/6)); 
-    ctx.closePath(); ctx.fillStyle = isAHighlighted ? "#009fe3" : "#444"; ctx.fill();
-    
-    ctx.beginPath(); ctx.moveTo(lineX2, lineY2); 
-    ctx.lineTo(lineX2 - s*Math.cos(angle - Math.PI/6), lineY2 - s*Math.sin(angle - Math.PI/6)); 
-    ctx.lineTo(lineX2 - s*Math.cos(angle + Math.PI/6), lineY2 - s*Math.sin(angle + Math.PI/6)); 
-    ctx.closePath(); ctx.fill();
-    
-    ctx.font = `bold ${Math.max(12, 14 * scaleFactor)}px Segoe UI, Arial`; 
-    ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    const mx = (lineX1 + lineX2) / 2, my = (lineY1 + lineY2) / 2;
-    const textOff = 16 * scaleFactor;
-    
-    const label = `A: ${A}mm`;
-    const txtW = ctx.measureText(label).width + 10;
-    const txtH = 20 * scaleFactor;
-    ctx.fillStyle = isAHighlighted ? "rgba(0, 159, 227, 0.15)" : "#dfe8f2"; 
-    ctx.fillRect(mx + nx * textOff - txtW/2, my + ny * textOff - txtH/2, txtW, txtH);
-    ctx.fillStyle = isAHighlighted ? "#009fe3" : "#000";
-    ctx.fillText(label, mx + nx * textOff, my + ny * textOff);
+        ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); 
+        ctx.strokeStyle = isAHighlighted ? "#009fe3" : "#444"; 
+        ctx.lineWidth = (isAHighlighted ? 3 : 1.5) * scaleFactor; 
+        ctx.stroke();     
+        
+        const s = 10 * scaleFactor; 
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const angle = Math.atan2(dy, dx);
+        
+        ctx.beginPath(); ctx.moveTo(lineX1, lineY1); 
+        ctx.lineTo(lineX1 + s*Math.cos(angle - Math.PI/6), lineY1 + s*Math.sin(angle - Math.PI/6)); 
+        ctx.lineTo(lineX1 + s*Math.cos(angle + Math.PI/6), lineY1 + s*Math.sin(angle + Math.PI/6)); 
+        ctx.closePath(); ctx.fillStyle = isAHighlighted ? "#009fe3" : "#444"; ctx.fill();
+        
+        ctx.beginPath(); ctx.moveTo(lineX2, lineY2); 
+        ctx.lineTo(lineX2 - s*Math.cos(angle - Math.PI/6), lineY2 - s*Math.sin(angle - Math.PI/6)); 
+        ctx.lineTo(lineX2 - s*Math.cos(angle + Math.PI/6), lineY2 - s*Math.sin(angle + Math.PI/6)); 
+        ctx.closePath(); ctx.fill();
+        
+        ctx.font = `bold ${Math.max(12, 14 * scaleFactor)}px Segoe UI, Arial`; 
+        ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        const mx = (lineX1 + lineX2) / 2, my = (lineY1 + lineY2) / 2;
+        const textOff = 16 * scaleFactor;
+        
+        const label = `A: ${A}mm`;
+        const txtW = ctx.measureText(label).width + 10;
+        const txtH = 20 * scaleFactor;
+        ctx.fillStyle = isAHighlighted ? "rgba(0, 159, 227, 0.15)" : "#dfe8f2"; 
+        ctx.fillRect(mx + nx * textOff - txtW/2, my + ny * textOff - txtH/2, txtW, txtH);
+        ctx.fillStyle = isAHighlighted ? "#009fe3" : "#000";
+        ctx.fillText(label, mx + nx * textOff, my + ny * textOff);
+    }
 }
 
 function downloadPNG() {     
