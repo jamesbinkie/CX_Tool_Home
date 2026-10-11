@@ -18,9 +18,9 @@ function getEdgeNames() {
 function updateCornerLabels() {
     const names = [
         ["Btm L", "Btm R", "Top R", "Top L"],
-        ["Top L", "Btm L", "Btm R", "Top R"],
+        ["Btm R", "Top R", "Top L", "Btm L"],
         ["Top R", "Top L", "Btm L", "Btm R"],
-        ["Btm R", "Top R", "Top L", "Btm L"]
+        ["Top L", "Btm L", "Btm R", "Top R"]
     ][(rotationAngle / 90) % 4];
     
     document.querySelector('[data-corner="0"] label').textContent = `Corner 1 (${names[0]})`;
@@ -33,9 +33,9 @@ function updateDimensionLabels() {
     const step = (rotationAngle / 90) % 4;
     const names = [
         ["A (Height):", "B (Bottom Width):", "C (Top Width):", "D (Offset):"],
-        ["A (Width):", "B (Left Height):", "C (Right Height):", "D (Offset):"],
+        ["A (Width):", "B (Right Height):", "C (Left Height):", "D (Offset):"],
         ["A (Height):", "B (Top Width):", "C (Bottom Width):", "D (Offset):"],
-        ["A (Width):", "B (Right Height):", "C (Left Height):", "D (Offset):"]
+        ["A (Width):", "B (Left Height):", "C (Right Height):", "D (Offset):"]
     ];
     document.getElementById("labelA").textContent = names[step][0];
     document.getElementById("labelB").textContent = names[step][1];
@@ -260,14 +260,12 @@ function getPoints() {
     return rotated.map(p => [p[0] - minX, p[1] - minY]);
 }
 
-// Fixed intersectLines to correctly read from the 2 object parameters
-function intersectLines(l1, l2) {
-    const denom = (l1.x1 - l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 - l2.x2);
-    if (Math.abs(denom) < 0.0001) return { x: l1.x2, y: l1.y2 };
-    return {
-        x: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.x1 - l2.x2) - (l1.x1 - l1.x2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom,
-        y: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom
-    };
+function intersectLines(p1, p2, p3, p4) {     
+    let denom = (p1.x - p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x - p4.x);     
+    if (Math.abs(denom) < 0.0001) return {x: p2.x, y: p2.y};     
+    let x = ((p1.x*p2.y - p1.y*p2.x)*(p3.x - p4.x) - (p1.x - p2.x)*(p3.x*p4.y - p3.y*p4.x)) / denom;     
+    let y = ((p1.x*p2.y - p1.y*p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x*p4.y - p3.y*p4.x)) / denom;     
+    return {x, y}; 
 }
 
 function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {     
@@ -284,7 +282,10 @@ function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {
     let rawCorners = [];     
     for (let i = 0; i < n; i++) {         
         const ePrev = edges[(i + n - 1) % n], eNext = edges[i];         
-        const C_off = intersectLines(ePrev.offL, eNext.offL);         
+        const C_off = intersectLines(
+            {x: ePrev.offL.x1, y: ePrev.offL.y1}, {x: ePrev.offL.x2, y: ePrev.offL.y2}, 
+            {x: eNext.offL.x1, y: eNext.offL.y1}, {x: eNext.offL.x2, y: eNext.offL.y2}
+        );         
         let cross = ePrev.vx * eNext.vy - ePrev.vy * eNext.vx, dot = ePrev.vx * eNext.vx + ePrev.vy * eNext.vy;         
         let alpha = Math.atan2(cross, dot);         
         let isConvex = (cross * CW) > 0;         
@@ -461,17 +462,26 @@ function drawTrapezium(targetCanvas = null) {
             else if (type === 'left') edgeIdx = 1;
         }
 
-        if (edgeIdx !== undefined) {
-            ctx.beginPath();
+        ctx.beginPath();
+        if (highlightedDim === 'A' && edgeIdx === undefined) {
+            const minX2 = Math.min(...crns.map(c => c.C_off.x)), maxX2 = Math.max(...crns.map(c => c.C_off.x));
+            const minY2 = Math.min(...crns.map(c => c.C_off.y)), maxY2 = Math.max(...crns.map(c => c.C_off.y));
+            let p1, p2;
+            if (rotationAngle === 0) { p1 = {x: minX2, y: maxY2}; p2 = {x: minX2, y: minY2}; }
+            else if (rotationAngle === 90) { p1 = {x: minX2, y: minY2}; p2 = {x: maxX2, y: minY2}; }
+            else if (rotationAngle === 180) { p1 = {x: maxX2, y: minY2}; p2 = {x: maxX2, y: maxY2}; }
+            else if (rotationAngle === 270) { p1 = {x: maxX2, y: maxY2}; p2 = {x: minX2, y: maxY2}; }
+            ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+        } else if (edgeIdx !== undefined) {
             const c1 = crns[edgeIdx];
             const c2 = crns[(edgeIdx + 1) % crns.length];
             ctx.moveTo(c1.arcEnd.x, c1.arcEnd.y);
             ctx.lineTo(c2.arcStart.x, c2.arcStart.y);
-            ctx.strokeStyle = "rgba(0, 159, 227, 0.5)";
-            ctx.lineWidth = 16 * (canvas.width / 1200);
-            ctx.lineCap = "round";
-            ctx.stroke();
         }
+        ctx.strokeStyle = "rgba(0, 159, 227, 0.5)";
+        ctx.lineWidth = 16 * (canvas.width / 1200);
+        ctx.lineCap = "round";
+        ctx.stroke();
     }
 
     drawDimensions(ctx, crns, scale);     
@@ -489,7 +499,6 @@ function drawDimensions(ctx, crns, scale) {
     const A = parseFloat(document.getElementById("A").value);
     const B = parseFloat(document.getElementById("B").value);
     const C = parseFloat(document.getElementById("C").value);
-    const D = parseFloat(document.getElementById("D").value);
     
     function drawEdgeDim(idx, label, dimId) {
         const p1 = crns[idx].C_off;
