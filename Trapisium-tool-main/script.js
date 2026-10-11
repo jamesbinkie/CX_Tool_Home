@@ -260,12 +260,13 @@ function getPoints() {
     return rotated.map(p => [p[0] - minX, p[1] - minY]);
 }
 
-function intersectLines(p1, p2, p3, p4) {     
-    let denom = (p1.x - p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x - p4.x);     
-    if (Math.abs(denom) < 0.0001) return {x: p2.x, y: p2.y};     
-    let x = ((p1.x*p2.y - p1.y*p2.x)*(p3.x - p4.x) - (p1.x - p2.x)*(p3.x*p4.y - p3.y*p4.x)) / denom;     
-    let y = ((p1.x*p2.y - p1.y*p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x*p4.y - p3.y*p4.x)) / denom;     
-    return {x, y}; 
+function intersectLines(l1, l2) {     
+    const denom = (l1.x1 - l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 - l2.x2);     
+    if (Math.abs(denom) < 0.0001) return { x: l1.x2, y: l1.y2 };     
+    return { 
+        x: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.x1 - l2.x2) - (l1.x1 - l1.x2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom, 
+        y: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom 
+    }; 
 }
 
 function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {     
