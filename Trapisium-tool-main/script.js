@@ -8,9 +8,9 @@ function rotatePart() {
 function getEdgeNames() {
     const names = [
         ["Bottom", "Right", "Top", "Left"],
-        ["Right", "Bottom", "Left", "Top"],
+        ["Right", "Top", "Left", "Bottom"],
         ["Top", "Left", "Bottom", "Right"],
-        ["Left", "Top", "Right", "Bottom"]
+        ["Left", "Bottom", "Right", "Top"]
     ];
     return names[(rotationAngle / 90) % 4];
 }
@@ -222,12 +222,13 @@ function getPoints() {
     return rotated.map(p => [p[0] - minX, p[1] - minY]);
 }
 
-function intersectLines(p1, p2, p3, p4) {     
-    let denom = (p1.x - p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x - p4.x);     
-    if (Math.abs(denom) < 0.0001) return {x: p2.x, y: p2.y};     
-    let x = ((p1.x*p2.y - p1.y*p2.x)*(p3.x - p4.x) - (p1.x - p2.x)*(p3.x*p4.y - p3.y*p4.x)) / denom;     
-    let y = ((p1.x*p2.y - p1.y*p2.x)*(p3.y - p4.y) - (p1.y - p2.y)*(p3.x*p4.y - p3.y*p4.x)) / denom;     
-    return {x, y}; 
+function intersectLines(l1, l2) {     
+    const denom = (l1.x1 - l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 - l2.x2);     
+    if (Math.abs(denom) < 0.0001) return { x: l1.x2, y: l1.y2 };     
+    return { 
+        x: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.x1 - l2.x2) - (l1.x1 - l1.x2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom, 
+        y: ((l1.x1 * l1.y2 - l1.y1 * l1.x2) * (l2.y1 - l2.y2) - (l1.y1 - l1.y2) * (l2.x1 * l2.y2 - l2.y1 * l2.x2)) / denom 
+    }; 
 }
 
 function generatePathData(pts, offset, radii, scale = 1, offX = 0, offY = 0) {     
@@ -330,7 +331,6 @@ function updateBandingUI(radii) {
     }     
     currentSections = sections; 
     
-    // Dynamic edge names linked to screen position
     const edgeNames = getEdgeNames();          
     
     let html = `<label style="grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; font-weight: bold; margin-bottom: 5px;"><input type="checkbox" id="bandAll"> Band All</label>`;          
@@ -437,6 +437,11 @@ function drawDimensions(ctx, crns, scale) {
         const lineX1 = p1.x + nx * off, lineY1 = p1.y + ny * off;
         const lineX2 = p2.x + nx * off, lineY2 = p2.y + ny * off;
         
+        ctx.beginPath(); 
+        ctx.moveTo(p1.x + nx * 5, p1.y + ny * 5); ctx.lineTo(lineX1, lineY1);
+        ctx.moveTo(p2.x + nx * 5, p2.y + ny * 5); ctx.lineTo(lineX2, lineY2);
+        ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = 1; ctx.stroke();
+        
         ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); 
         ctx.strokeStyle = "#444"; ctx.lineWidth = 1.5 * scaleFactor; ctx.stroke();     
         
@@ -470,7 +475,7 @@ function drawDimensions(ctx, crns, scale) {
 
     drawEdgeDim(0, `B: ${B}mm`);
     drawEdgeDim(2, `C: ${C}mm`);
-
+    
     const xs = crns.map(c => c.C_off.x);
     const ys = crns.map(c => c.C_off.y);
     const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -485,6 +490,11 @@ function drawDimensions(ctx, crns, scale) {
     const lineX1 = p1.x + nx * off, lineY1 = p1.y + ny * off;
     const lineX2 = p2.x + nx * off, lineY2 = p2.y + ny * off;
     
+    ctx.beginPath(); 
+    ctx.moveTo(p1.x + nx * 5, p1.y + ny * 5); ctx.lineTo(lineX1, lineY1);
+    ctx.moveTo(p2.x + nx * 5, p2.y + ny * 5); ctx.lineTo(lineX2, lineY2);
+    ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = 1; ctx.stroke();
+
     ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); 
     ctx.strokeStyle = "#444"; ctx.lineWidth = 1.5 * scaleFactor; ctx.stroke();     
     
