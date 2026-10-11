@@ -48,8 +48,30 @@ function updateCornerLabels() {
     document.querySelector('[data-corner="5"] label').textContent = `Corner 6 (${names[5]})`;
 }
 
+function updateDimensionLabels() {
+    const isLeft = document.getElementById("type").value === "left";
+    const step = (rotationAngle / 90) % 4;
+    const rightNames = [
+        ["Total Width (A):", "Total Height (B):", "Top Leg Width (C):", "Bottom Leg Height (D):"],
+        ["Total Height (A):", "Total Width (B):", "Left Leg Height (C):", "Top Leg Width (D):"],
+        ["Total Width (A):", "Total Height (B):", "Bottom Leg Width (C):", "Top Leg Height (D):"],
+        ["Total Height (A):", "Total Width (B):", "Right Leg Height (C):", "Bottom Leg Width (D):"]
+    ];
+    const leftNames = [
+        ["Total Width (A):", "Total Height (B):", "Top Leg Width (C):", "Bottom Leg Height (D):"],
+        ["Total Height (A):", "Total Width (B):", "Right Leg Height (C):", "Top Leg Width (D):"],
+        ["Total Width (A):", "Total Height (B):", "Bottom Leg Width (C):", "Top Leg Height (D):"],
+        ["Total Height (A):", "Total Width (B):", "Left Leg Height (C):", "Bottom Leg Width (D):"]
+    ];
+    const current = isLeft ? leftNames[step] : rightNames[step];
+    document.getElementById("labelA").textContent = current[0];
+    document.getElementById("labelB").textContent = current[1];
+    document.getElementById("labelC").textContent = current[2];
+    document.getElementById("labelD").textContent = current[3];
+}
+
 let highlightedCorner = -1; 
-let highlightedEdge = null;
+let highlightedDim = null; 
 let currentSections = []; 
 const bandingColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"]; 
 
@@ -68,14 +90,10 @@ window.onload = () => {
     });     
     
     // Dimension hover edge highlighting
-    const dimInputs = { "totalW": [0], "totalH": [5], "legW": [4], "legH": [1] };
-    for (let id in dimInputs) {
-        const el = document.getElementById(id);
-        if (el) {
-            el.addEventListener('mouseenter', () => { highlightedEdge = dimInputs[id]; drawLShape(); });
-            el.addEventListener('mouseleave', () => { highlightedEdge = null; drawLShape(); });
-        }
-    }
+    document.querySelectorAll('.dim-wrap').forEach(wrap => {         
+        wrap.addEventListener('mouseenter', () => { highlightedDim = wrap.dataset.dim; drawLShape(); });         
+        wrap.addEventListener('mouseleave', () => { highlightedDim = null; drawLShape(); });     
+    });
 
     document.querySelectorAll('.corner-input-wrap').forEach(wrap => {         
         wrap.addEventListener('mouseenter', () => { highlightedCorner = parseInt(wrap.dataset.corner); drawLShape(); });         
@@ -92,6 +110,7 @@ function updateUI() {
     updateBandingUI(getRadii());      
     validateRadii();      
     updateCornerLabels();
+    updateDimensionLabels();
     drawLShape();  
 }
 
@@ -438,20 +457,6 @@ function drawLShape(targetCanvas = null) {
         });     
     }     
     
-    if (highlightedEdge !== null && !targetCanvas) {
-        ctx.beginPath();
-        highlightedEdge.forEach(edgeIdx => {
-            const c1 = crns[edgeIdx];
-            const c2 = crns[(edgeIdx + 1) % crns.length];
-            ctx.moveTo(c1.arcEnd.x, c1.arcEnd.y);
-            ctx.lineTo(c2.arcStart.x, c2.arcStart.y);
-        });
-        ctx.strokeStyle = "rgba(0, 159, 227, 0.5)";
-        ctx.lineWidth = 16 * (canvas.width / 1200);
-        ctx.lineCap = "round";
-        ctx.stroke();
-    }
-    
     drawLDimensions(ctx, crns, scale);
     
     if (highlightedCorner !== -1 && !targetCanvas) {         
@@ -475,10 +480,11 @@ function drawLDimensions(ctx, crns, scale) {
     const D = parseFloat(document.getElementById("legH").value);
     const isLeft = document.getElementById("type").value === "left";
     
-    function drawEdgeDim(idx, label) {
+    function drawEdgeDim(idx, label, dimId) {
         const p1 = crns[idx].C_off;
         const p2 = crns[(idx + 1) % crns.length].C_off;
         const edge = crns[(idx + 1) % crns.length].ePrev; 
+        const isHighlighted = highlightedDim === dimId;
         
         const nx = edge.nx, ny = edge.ny;
         const lineX1 = p1.x + nx * off, lineY1 = p1.y + ny * off;
@@ -490,7 +496,9 @@ function drawLDimensions(ctx, crns, scale) {
         ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = 1; ctx.stroke();
         
         ctx.beginPath(); ctx.moveTo(lineX1, lineY1); ctx.lineTo(lineX2, lineY2); 
-        ctx.strokeStyle = "#444"; ctx.lineWidth = 1.5 * scaleFactor; ctx.stroke();     
+        ctx.strokeStyle = isHighlighted ? "#009fe3" : "#444"; 
+        ctx.lineWidth = (isHighlighted ? 3 : 1.5) * scaleFactor; 
+        ctx.stroke();     
         
         const s = 10 * scaleFactor; 
         const dx = p2.x - p1.x, dy = p2.y - p1.y;
@@ -499,7 +507,7 @@ function drawLDimensions(ctx, crns, scale) {
         ctx.beginPath(); ctx.moveTo(lineX1, lineY1); 
         ctx.lineTo(lineX1 + s*Math.cos(angle - Math.PI/6), lineY1 + s*Math.sin(angle - Math.PI/6)); 
         ctx.lineTo(lineX1 + s*Math.cos(angle + Math.PI/6), lineY1 + s*Math.sin(angle + Math.PI/6)); 
-        ctx.closePath(); ctx.fillStyle = "#444"; ctx.fill();
+        ctx.closePath(); ctx.fillStyle = isHighlighted ? "#009fe3" : "#444"; ctx.fill();
         
         ctx.beginPath(); ctx.moveTo(lineX2, lineY2); 
         ctx.lineTo(lineX2 - s*Math.cos(angle - Math.PI/6), lineY2 - s*Math.sin(angle - Math.PI/6)); 
@@ -513,22 +521,22 @@ function drawLDimensions(ctx, crns, scale) {
         
         const txtW = ctx.measureText(label).width + 10;
         const txtH = 20 * scaleFactor;
-        ctx.fillStyle = "#dfe8f2"; 
+        ctx.fillStyle = isHighlighted ? "rgba(0, 159, 227, 0.15)" : "#dfe8f2"; 
         ctx.fillRect(mx + nx * textOff - txtW/2, my + ny * textOff - txtH/2, txtW, txtH);
         
-        ctx.fillStyle = "#000";
+        ctx.fillStyle = isHighlighted ? "#009fe3" : "#000";
         ctx.fillText(label, mx + nx * textOff, my + ny * textOff);
     }
 
-    drawEdgeDim(0, `A: ${A}mm`);
-    drawEdgeDim(4, `C: ${C}mm`);
+    drawEdgeDim(0, `A: ${A}mm`, 'A');
+    drawEdgeDim(4, `C: ${C}mm`, 'C');
     
     if (isLeft) {
-        drawEdgeDim(1, `B: ${B}mm`); 
-        drawEdgeDim(5, `D: ${D}mm`); 
+        drawEdgeDim(1, `B: ${B}mm`, 'B'); 
+        drawEdgeDim(5, `D: ${D}mm`, 'D'); 
     } else {
-        drawEdgeDim(1, `D: ${D}mm`); 
-        drawEdgeDim(5, `B: ${B}mm`); 
+        drawEdgeDim(1, `D: ${D}mm`, 'D'); 
+        drawEdgeDim(5, `B: ${B}mm`, 'B'); 
     }
 }
 
