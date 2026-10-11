@@ -1,7 +1,12 @@
+let rotationAngle = 0;
+
+function rotatePart() {
+    rotationAngle = (rotationAngle + 90) % 360;
+    updateUI();
+}
+
 let highlightedCorner = -1; 
 let currentSections = []; 
-let rotationAngle = 0; // New global rotation state
-
 const bandingColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"]; 
 
 function getEdgeNames() {     
@@ -30,11 +35,6 @@ window.onload = () => {
         requestAnimationFrame(() => drawLShape());     
     }).observe(document.getElementById("canvas"));          
     updateUI(); 
-};
-
-window.rotatePart = function() {
-    rotationAngle = (rotationAngle + 90) % 360;
-    updateUI();
 };
 
 function updateUI() {      
@@ -76,7 +76,7 @@ function validateRadii() {
     let conflict = false;      
     let changed = false;     
     const radii = getRadii();     
-    const pts = getPoints();     
+    const pts = getBasePoints();     
     const n = pts.length;     
     const isLeft = document.getElementById("type").value === "left";          
     const C = parseFloat(document.getElementById("legW").value) || 300;     
@@ -326,7 +326,6 @@ function drawLShape(targetCanvas = null) {
     }     
     const pts = getPoints(), radii = getRadii(), A = parseFloat(document.getElementById("totalW").value), B = parseFloat(document.getElementById("totalH").value);     
     
-    // Recalculate dimensions for centered rotated canvas
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
     const shapeW = Math.max(...xs) - Math.min(...xs), shapeH = Math.max(...ys) - Math.min(...ys);
     
@@ -370,7 +369,7 @@ function drawLShape(targetCanvas = null) {
         });     
     }     
     
-    if (rotationAngle === 0) drawLDimensions(ctx, scale, offX, offY, shapeH); // Hide dimensions on rotate to prevent overlapping texts
+    if (rotationAngle === 0) drawLDimensions(ctx, scale, offX, offY, shapeH);
     
     if (highlightedCorner !== -1 && !targetCanvas) {         
         const isLeft = document.getElementById("type").value === "left";         
